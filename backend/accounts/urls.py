@@ -2,7 +2,12 @@ from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from accounts.serializers import FreightpilotTokenObtainPairSerializer
-from accounts.views import ProfileView, RegisterView
+from accounts.views import (
+    PasswordResetConfirmView,
+    PasswordResetRequestView,
+    ProfileView,
+    RegisterView,
+)
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 class FreightpilotTokenObtainPairView(TokenObtainPairView):
@@ -15,4 +20,6 @@ urlpatterns = [
     path('auth/login/', FreightpilotTokenObtainPairView.as_view(), name='login'),
     path('auth/refresh/', TokenRefreshView.as_view(), name='refresh'),
     path('auth/profile/', ProfileView.as_view(), name='profile'),
+    path('auth/password/reset/', PasswordResetRequestView.as_view(), name='password-reset'),
+    path('auth/password/reset/confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
 ]

@@ -6,6 +6,8 @@ import { useAuth } from './context'
 import { AuthLayout } from './pages/AuthLayout'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
+import { PasswordResetConfirmPage } from './pages/PasswordResetConfirmPage'
+import { PasswordResetRequestPage } from './pages/PasswordResetRequestPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { TripDetailPage } from './pages/TripDetailPage'
 
@@ -157,6 +159,8 @@ export const routes: RouteObject[] = [
     children: [
       { path: 'login', element: <LoginPage /> },
       { path: 'register', element: <RegisterPage /> },
+      { path: 'password-reset', element: <PasswordResetRequestPage /> },
+      { path: 'password-reset/confirm', element: <PasswordResetConfirmPage /> },
     ],
   },
   {

@@ -22,6 +22,8 @@ type AuthContextValue = {
   register: (payload: RegisterPayload) => Promise<void>
   logout: () => void
   refreshProfile: () => Promise<void>
+  requestPasswordReset: (email: string) => Promise<void>
+  confirmPasswordReset: (uid: string, token: string, newPassword: string) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
@@ -83,8 +85,29 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     navigate('/auth/login')
   }
 
+  const requestPasswordReset = async (email: string) => {
+    await apiClient.post('/auth/password/reset/', { email })
+  }
+
+  const confirmPasswordReset = async (uid: string, token: string, newPassword: string) => {
+    await apiClient.post('/auth/password/reset/confirm/', {
+      uid,
+      token,
+      new_password: newPassword,
+    })
+  }
+
   const value = useMemo(
-    () => ({ user, loading, login, register, logout, refreshProfile }),
+    () => ({
+      user,
+      loading,
+      login,
+      register,
+      logout,
+      refreshProfile,
+      requestPasswordReset,
+      confirmPasswordReset,
+    }),
     [user, loading],
   )
 

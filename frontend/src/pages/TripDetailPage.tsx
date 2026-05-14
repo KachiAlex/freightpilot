@@ -1,5 +1,6 @@
 import { useParams } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
+import type { LatLngTuple } from 'leaflet'
 import { useRegenerateSchedule, useTrip } from '../hooks'
 import { MapPlaceholder } from '../components/MapPlaceholder'
 import { TripDetailHeader } from '../components/TripDetailHeader'
@@ -25,8 +26,20 @@ export const TripDetailPage = () => {
     return <p className="px-4 py-10 text-slate">Loading trip…</p>
   }
 
-  const pickupCoords = trip.pickup_latitude && trip.pickup_longitude ? [Number(trip.pickup_latitude), Number(trip.pickup_longitude)] : null
-  const dropoffCoords = trip.dropoff_latitude && trip.dropoff_longitude ? [Number(trip.dropoff_latitude), Number(trip.dropoff_longitude)] : null
+  const toLatLngTuple = (lat?: string | null, lng?: string | null): LatLngTuple | null => {
+    if (!lat || !lng) {
+      return null
+    }
+    const parsedLat = Number(lat)
+    const parsedLng = Number(lng)
+    if (Number.isNaN(parsedLat) || Number.isNaN(parsedLng)) {
+      return null
+    }
+    return [parsedLat, parsedLng]
+  }
+
+  const pickupCoords = toLatLngTuple(trip.pickup_latitude, trip.pickup_longitude)
+  const dropoffCoords = toLatLngTuple(trip.dropoff_latitude, trip.dropoff_longitude)
   const restStops = (trip.schedule_snapshot?.rest_stops ?? trip.duty_segments.filter((segment) => segment.status === 'off_duty' || segment.status === 'sleeper_berth').map((segment) => ({
     status: segment.status,
     start_time: segment.start_time,

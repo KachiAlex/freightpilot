@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import { MapPinIcon, ClockIcon, ArrowsRightLeftIcon } from '@heroicons/react/24/outline'
 import { MapContainer, Marker, Polyline, TileLayer, Tooltip } from 'react-leaflet'
-import L, { LatLngExpression, LatLngTuple } from 'leaflet'
+import L from 'leaflet'
+import type { LatLngExpression, LatLngTuple } from 'leaflet'
 
 interface MapPlaceholderProps {
   pickup: string

@@ -49,6 +49,11 @@ export const LoginPage = () => {
             onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
             required
           />
+          <div className="text-right">
+            <Link to="/auth/password-reset" className="text-xs text-sky hover:underline">
+              Forgot password?
+            </Link>
+          </div>
         </div>
         <button
           type="submit"

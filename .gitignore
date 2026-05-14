@@ -1,0 +1,29 @@
+# Global ignores
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+*.log
+*.sqlite3
+.env
+.env.*
+.DS_Store
+Thumbs.db
+
+# Python virtual environments
+.venv/
+backend/.venv/
+
+# Django artifacts
+staticfiles/
+media/
+
+# Node / frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp

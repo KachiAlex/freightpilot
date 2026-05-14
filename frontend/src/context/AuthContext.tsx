@@ -1,5 +1,4 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 
 import { apiClient } from '../lib/api'
 import type { User, UserRole } from '../types/user'
@@ -34,7 +33,6 @@ const REFRESH_KEY = 'freightpilot_refresh'
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
-  const navigate = useNavigate()
 
   const persistTokens = (access: string, refresh: string) => {
     localStorage.setItem(ACCESS_KEY, access)
@@ -82,7 +80,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const logout = () => {
     clearTokens()
     setUser(null)
-    navigate('/auth/login')
+    if (typeof window !== 'undefined') {
+      window.location.assign('/auth/login')
+    }
   }
 
   const requestPasswordReset = async (email: string) => {

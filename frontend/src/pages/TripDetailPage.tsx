@@ -4,6 +4,7 @@ import type { LatLngTuple } from 'leaflet'
 import { useRegenerateSchedule, useTrip } from '../hooks'
 import { MapPlaceholder } from '../components/MapPlaceholder'
 import { TripDetailHeader } from '../components/TripDetailHeader'
+import LogSheetList from '../components/LogSheetList'
 
 export const TripDetailPage = () => {
   const { tripId } = useParams<{ tripId: string }>()
@@ -135,6 +136,13 @@ export const TripDetailPage = () => {
             </dd>
           </div>
         </dl>
+      </div>
+
+      <div className="mt-8 rounded-3xl border border-white/10 bg-black/30 p-6">
+        <p className="text-xs uppercase tracking-[0.35em] text-slate/70">Saved Logs</p>
+        <div className="mt-4">
+          <LogSheetList tripId={Number(trip.id)} />
+        </div>
       </div>
 
       {restStops.length > 0 && (

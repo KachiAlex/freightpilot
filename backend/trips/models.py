@@ -82,6 +82,7 @@ class LogSheet(TimestampedModel):
     trip = models.ForeignKey(Trip, related_name='log_sheets', on_delete=models.CASCADE)
     date = models.DateField()
     pdf_file = models.FileField(upload_to='logs/', blank=True, null=True)
+    thumbnail = models.ImageField(upload_to='logs/thumbnails/', blank=True, null=True)
     graph_data = models.JSONField(default=dict, blank=True)
     remarks = models.TextField(blank=True)
 

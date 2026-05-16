@@ -33,6 +33,7 @@ class LogSheetSerializer(serializers.ModelSerializer):
             'graph_data',
             'remarks',
             'pdf_file',
+            'thumbnail',
         )
 
 

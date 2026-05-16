@@ -1,9 +1,11 @@
+
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
+import io
 
 from django.core.cache import cache
 from django.utils import timezone
@@ -36,25 +38,69 @@ class TripPlannerService:
             return float(default)
 
     def generate_schedule(self) -> List[TripPlanSegment]:
-        # TODO: replace with actual HOS engine
+        # Basic HOS prototype (not a legal substitute). Enforces common limits:
+        # - Max 11 hours driving in a 14-hour duty window (solo driver)
+        # - Required 30-minute break after 8 cumulative driving hours
+        # This is a simplified engine to generate reasonable duty segments for the UI.
         start = self.trip.start_time
-        drive_block_hours = self._pref('drive_block_hours', 4)
-        break_minutes = self._pref('break_minutes', 30)
-        second_drive_hours = self._pref('second_drive_hours', 3)
+        # preferences override defaults
+        break_minutes = int(self._pref('break_minutes', 30))
         sleeper_hours = self._pref('sleeper_hours', 10)
 
-        drive_block_end = start + timedelta(hours=drive_block_hours)
-        break_start = drive_block_end
-        break_end = break_start + timedelta(minutes=break_minutes)
-        final_drive_end = break_end + timedelta(hours=second_drive_hours)
-        sleeper_end = final_drive_end + timedelta(hours=sleeper_hours)
+        # Use estimated drive hours if present, otherwise assume a short trip
+        try:
+            estimated_hours = float(self.trip.estimated_drive_hours or 6.0)
+        except (TypeError, ValueError):
+            estimated_hours = 6.0
 
-        return [
-            TripPlanSegment(DutyStatus.StatusChoices.DRIVING, start, drive_block_end, 'Initial drive block'),
-            TripPlanSegment(DutyStatus.StatusChoices.OFF_DUTY, break_start, break_end, 'Scheduled rest stop'),
-            TripPlanSegment(DutyStatus.StatusChoices.DRIVING, break_end, final_drive_end, 'Resume driving'),
-            TripPlanSegment(DutyStatus.StatusChoices.SLEEPER, final_drive_end, sleeper_end, 'Sleeper berth reset'),
-        ]
+        segments: List[TripPlanSegment] = []
+        remaining = estimated_hours
+        now = start
+
+        # Track cumulative driving within the duty window (resets only after sleeper)
+        cumulative_drive = 0.0
+        max_drive_per_window = 11.0
+        break_threshold = 8.0
+
+        # Safety loop guard
+        iterations = 0
+        while remaining > 0 and iterations < 100:
+            iterations += 1
+
+            # If we've exhausted the daily driving allotment, schedule sleeper reset
+            if cumulative_drive >= max_drive_per_window:
+                sleeper_end = now + timedelta(hours=sleeper_hours)
+                segments.append(TripPlanSegment(DutyStatus.StatusChoices.SLEEPER, now, sleeper_end, 'Sleeper berth reset'))
+                now = sleeper_end
+                cumulative_drive = 0.0
+                continue
+
+            # How much we can drive before hitting either the 11-hour cap or the next required break
+            available_before_cap = max_drive_per_window - cumulative_drive
+            # If approaching break threshold, drive only until break threshold
+            if cumulative_drive < break_threshold and remaining + cumulative_drive > break_threshold:
+                drive_block = break_threshold - cumulative_drive
+            else:
+                drive_block = min(remaining, available_before_cap)
+
+            drive_end = now + timedelta(hours=drive_block)
+            segments.append(TripPlanSegment(DutyStatus.StatusChoices.DRIVING, now, drive_end, 'Driving'))
+
+            now = drive_end
+            remaining = max(0.0, remaining - drive_block)
+            cumulative_drive += drive_block
+
+            # After driving to or past the break threshold and if there is remaining driving, schedule a break
+            if cumulative_drive >= break_threshold and remaining > 0:
+                break_end = now + timedelta(minutes=break_minutes)
+                segments.append(TripPlanSegment(DutyStatus.StatusChoices.OFF_DUTY, now, break_end, 'Required break'))
+                now = break_end
+
+        # If no segments were produced (edge case), add an off-duty block
+        if not segments:
+            segments.append(TripPlanSegment(DutyStatus.StatusChoices.OFF_DUTY, start, start + timedelta(hours=1), 'Idle'))
+
+        return segments
 
     def persist(self):
         segments = self.generate_schedule()
@@ -182,3 +228,138 @@ class RouteEstimator:
             'origin_coords': origin_coords,
             'destination_coords': destination_coords,
         }
+
+
+def generate_log_pdf(trip, rows, export_date):
+    """Generate a PDF bytes object for the given trip and rows (list of rows).
+
+    Each row should be: [start_time, end_time, status, remarks, duration_str]
+    Returns: bytes of PDF
+    """
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+
+    from reportlab.lib import colors
+
+    # TODO: Generate PNG thumbnail using Pillow (PIL) instead of matplotlib
+    # Matplotlib tends to hang in test environments. Use simple PIL drawing instead.
+    # For now, leave thumb_bytes as None and focus on core functionality.
+    # Later: Use Pillow.Image + ImageDraw to draw rectangles and save as PNG.
+    thumb_bytes = None
+
+    pdf_buffer = io.BytesIO()
+    c = canvas.Canvas(pdf_buffer, pagesize=letter)
+    width, height = letter
+    y = height - 40
+
+    # Header
+    c.setFont('Helvetica-Bold', 14)
+    c.drawString(40, y, f"Trip {trip.id} Log — {export_date}")
+    y -= 18
+
+    # Summary line
+    total_hours = 0.0
+    for r in rows:
+        try:
+            total_hours += float(r[4])
+        except Exception:
+            pass
+    c.setFont('Helvetica', 9)
+    c.drawString(40, y, f"Total segments: {len(rows)}  •  Total hours: {total_hours:.2f}")
+    y -= 18
+
+    # Timeline graph: horizontal bar representing segments proportionally
+    if rows:
+        # Parse timestamps
+        try:
+            starts = [timezone.datetime.fromisoformat(r[0]) for r in rows]
+            ends = [timezone.datetime.fromisoformat(r[1]) for r in rows]
+            min_t = min(starts)
+            max_t = max(ends)
+            span_seconds = max(1, (max_t - min_t).total_seconds())
+            bar_x = 40
+            bar_w = width - 80
+            bar_h = 14
+            bar_y = y - bar_h
+
+            # Draw background
+            c.setFillColor(colors.lightgrey)
+            c.rect(bar_x, bar_y, bar_w, bar_h, fill=1, stroke=0)
+
+            # Status color mapping
+            status_colors = {
+                'driving': colors.green,
+                'off_duty': colors.gray,
+                'sleeper_berth': colors.blue,
+                'on_duty': colors.orange,
+            }
+
+            for r in rows:
+                try:
+                    s = timezone.datetime.fromisoformat(r[0])
+                    e = timezone.datetime.fromisoformat(r[1])
+                except Exception:
+                    continue
+                start_frac = (s - min_t).total_seconds() / span_seconds
+                end_frac = (e - min_t).total_seconds() / span_seconds
+                rx = bar_x + start_frac * bar_w
+                rw = max(1, (end_frac - start_frac) * bar_w)
+                status_key = (r[2] or '').lower()
+                color = status_colors.get(status_key, colors.lightblue)
+                c.setFillColor(color)
+                c.rect(rx, bar_y, rw, bar_h, fill=1, stroke=0)
+
+            # Labels
+            c.setFillColor(colors.black)
+            c.setFont('Helvetica', 8)
+            c.drawString(bar_x, bar_y - 12, min_t.isoformat())
+            c.drawRightString(bar_x + bar_w, bar_y - 12, max_t.isoformat())
+            y = bar_y - 24
+        except Exception:
+            y -= 10
+
+    # Table header
+    c.setFont('Helvetica-Bold', 10)
+    c.drawString(40, y, 'start_time')
+    c.drawString(180, y, 'end_time')
+    c.drawString(320, y, 'status')
+    c.drawString(420, y, 'duration_hrs')
+    y -= 14
+    c.setFont('Helvetica', 9)
+
+    for r in rows:
+        if y < 60:
+            c.showPage()
+            y = height - 40
+        start_t, end_t, status_text, remarks, duration = r
+        c.drawString(40, y, str(start_t))
+        c.drawString(180, y, str(end_t))
+        c.drawString(320, y, str(status_text))
+        c.drawString(420, y, str(duration))
+        y -= 12
+
+    # Optionally include schedule snapshot details
+    try:
+        snapshot = trip.schedule_snapshot or {}
+        if snapshot:
+            if y < 120:
+                c.showPage()
+                y = height - 40
+            c.setFont('Helvetica-Bold', 11)
+            c.drawString(40, y, 'Schedule Snapshot')
+            y -= 14
+            c.setFont('Helvetica', 8)
+            text = c.beginText(40, y)
+            text.setLeading(10)
+            for k, v in snapshot.items():
+                text.textLine(f"{k}: {v}")
+            c.drawText(text)
+    except Exception:
+        pass
+
+    c.showPage()
+    c.save()
+    pdf_data = pdf_buffer.getvalue()
+    pdf_buffer.close()
+    # Return PDF bytes and thumbnail bytes (if generated)
+    return (pdf_data, thumb_bytes)

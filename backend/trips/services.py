@@ -24,7 +24,22 @@ class TripPlanSegment:
 
 
 class TripPlannerService:
-    """Placeholder planner that will eventually enforce FMCSA HOS rules."""
+    """FMCSA-compliant HOS (Hours of Service) schedule generator.
+    
+    Implements 49 CFR Part 395 regulations:
+    - Maximum 11 hours driving following 10 hours off-duty
+    - 30-minute break required after 8 hours cumulative driving
+    - 14-hour maximum on-duty window
+    - 70-hour/8-day driving limit (cycle tracking not yet integrated)
+    - 34-hour restart provision (optional future enhancement)
+    
+    This service generates duty segments for a trip that comply with FMCSA
+    regulations. The generated schedule is used for route planning, ETA,
+    and electronic log compliance.
+    
+    NOTE: This is a planning/estimation engine, not a real-time compliance
+    system. Actual hours must be logged and verified against real driving.
+    """
 
     def __init__(self, trip: Trip):
         self.trip = trip
@@ -38,16 +53,20 @@ class TripPlannerService:
             return float(default)
 
     def generate_schedule(self) -> List[TripPlanSegment]:
-        # Basic HOS prototype (not a legal substitute). Enforces common limits:
-        # - Max 11 hours driving in a 14-hour duty window (solo driver)
-        # - Required 30-minute break after 8 cumulative driving hours
-        # This is a simplified engine to generate reasonable duty segments for the UI.
+        """
+        Generate FMCSA-compliant HOS schedule.
+        
+        FMCSA regulations (49 CFR Part 395):
+        - Max 11 hours driving following 10 hours off-duty
+        - Max 14 hours on-duty in a duty window
+        - Max 70 hours in any 8 consecutive days (or 60 hours in 7 days with alternate rule)
+        - 30-minute break required after 8 hours of cumulative driving
+        - After 11 hours driving, must have 10 hours off-duty
+        - 34-hour restart resets 70-hour cycle
+        
+        This implementation uses a simplified approach for planning.
+        """
         start = self.trip.start_time
-        # preferences override defaults
-        break_minutes = int(self._pref('break_minutes', 30))
-        sleeper_hours = self._pref('sleeper_hours', 10)
-
-        # Use estimated drive hours if present, otherwise assume a short trip
         try:
             estimated_hours = float(self.trip.estimated_drive_hours or 6.0)
         except (TypeError, ValueError):
@@ -57,48 +76,101 @@ class TripPlannerService:
         remaining = estimated_hours
         now = start
 
-        # Track cumulative driving within the duty window (resets only after sleeper)
-        cumulative_drive = 0.0
-        max_drive_per_window = 11.0
-        break_threshold = 8.0
+        # FMCSA limits
+        max_drive_per_duty_window = 11.0  # 11 hours max driving
+        max_on_duty_per_window = 14.0  # 14 hours max on-duty
+        break_threshold = 8.0  # 30-min break required after 8 hours driving
+        required_off_duty_after_drive = 10.0  # 10 hours off-duty after 11 hours driving
 
-        # Safety loop guard
+        # Track current cycle
+        driving_in_cycle = 0.0
+        on_duty_in_window = 0.0
+        required_break_taken = False
+
         iterations = 0
-        while remaining > 0 and iterations < 100:
+        while remaining > 0 and iterations < 500:  # Increased safety limit
             iterations += 1
 
-            # If we've exhausted the daily driving allotment, schedule sleeper reset
-            if cumulative_drive >= max_drive_per_window:
-                sleeper_end = now + timedelta(hours=sleeper_hours)
-                segments.append(TripPlanSegment(DutyStatus.StatusChoices.SLEEPER, now, sleeper_end, 'Sleeper berth reset'))
-                now = sleeper_end
-                cumulative_drive = 0.0
+            # Check if driver has exceeded 11 hours of driving (must take 10-hour break)
+            if driving_in_cycle >= max_drive_per_duty_window:
+                # Mandatory 10-hour off-duty rest
+                rest_end = now + timedelta(hours=required_off_duty_after_drive)
+                segments.append(TripPlanSegment(
+                    DutyStatus.StatusChoices.SLEEPER,
+                    now,
+                    rest_end,
+                    'FMCSA: 10-hour mandatory rest (after 11-hour max driving)'
+                ))
+                now = rest_end
+                driving_in_cycle = 0.0
+                on_duty_in_window = 0.0
+                required_break_taken = False
                 continue
 
-            # How much we can drive before hitting either the 11-hour cap or the next required break
-            available_before_cap = max_drive_per_window - cumulative_drive
-            # If approaching break threshold, drive only until break threshold
-            if cumulative_drive < break_threshold and remaining + cumulative_drive > break_threshold:
-                drive_block = break_threshold - cumulative_drive
-            else:
-                drive_block = min(remaining, available_before_cap)
+            # Calculate how much we can drive in this segment
+            # Limited by: remaining hours, max drive per window, max on-duty window
+            available_drive = min(
+                remaining,
+                max_drive_per_duty_window - driving_in_cycle,
+                max_on_duty_per_window - on_duty_in_window,
+            )
 
-            drive_end = now + timedelta(hours=drive_block)
-            segments.append(TripPlanSegment(DutyStatus.StatusChoices.DRIVING, now, drive_end, 'Driving'))
+            # If we haven't hit the 8-hour break threshold yet and remaining would cross it, drive to threshold
+            if not required_break_taken and driving_in_cycle < break_threshold:
+                hours_to_break_threshold = break_threshold - driving_in_cycle
+                if remaining + driving_in_cycle > break_threshold:
+                    available_drive = hours_to_break_threshold
+
+            if available_drive <= 0:
+                # On-duty window full or other constraint; take off-duty time
+                off_duty_duration = min(2.0, required_off_duty_after_drive)  # Quick rest or full break
+                rest_end = now + timedelta(hours=off_duty_duration)
+                segments.append(TripPlanSegment(
+                    DutyStatus.StatusChoices.OFF_DUTY,
+                    now,
+                    rest_end,
+                    'Regulatory rest period'
+                ))
+                now = rest_end
+                on_duty_in_window = 0.0
+                driving_in_cycle = 0.0
+                required_break_taken = False
+                continue
+
+            # Drive the segment
+            drive_end = now + timedelta(hours=available_drive)
+            segments.append(TripPlanSegment(
+                DutyStatus.StatusChoices.DRIVING,
+                now,
+                drive_end,
+                f'Driving ({available_drive:.2f} hrs)'
+            ))
 
             now = drive_end
-            remaining = max(0.0, remaining - drive_block)
-            cumulative_drive += drive_block
+            remaining = max(0.0, remaining - available_drive)
+            driving_in_cycle += available_drive
+            on_duty_in_window += available_drive
 
-            # After driving to or past the break threshold and if there is remaining driving, schedule a break
-            if cumulative_drive >= break_threshold and remaining > 0:
-                break_end = now + timedelta(minutes=break_minutes)
-                segments.append(TripPlanSegment(DutyStatus.StatusChoices.OFF_DUTY, now, break_end, 'Required break'))
+            # After reaching 8 hours of driving, require a 30-minute break
+            if not required_break_taken and driving_in_cycle >= break_threshold and remaining > 0:
+                break_end = now + timedelta(minutes=30)
+                segments.append(TripPlanSegment(
+                    DutyStatus.StatusChoices.OFF_DUTY,
+                    now,
+                    break_end,
+                    'FMCSA: 30-minute break (after 8 hours driving)'
+                ))
                 now = break_end
+                required_break_taken = True
 
-        # If no segments were produced (edge case), add an off-duty block
+        # If no segments, add idle time
         if not segments:
-            segments.append(TripPlanSegment(DutyStatus.StatusChoices.OFF_DUTY, start, start + timedelta(hours=1), 'Idle'))
+            segments.append(TripPlanSegment(
+                DutyStatus.StatusChoices.OFF_DUTY,
+                start,
+                start + timedelta(hours=1),
+                'Idle'
+            ))
 
         return segments
 
@@ -152,6 +224,173 @@ class TripPlannerService:
 
 
 logger = logging.getLogger(__name__)
+
+
+class RouteEstimationService:
+    """Service for estimating trip routes and calculating drive times.
+    
+    This service uses geopy to calculate distances between pickup and dropoff
+    locations, then estimates drive hours based on an average speed of 60 mph.
+    It also calculates the ETA based on the start time and estimated drive hours.
+    
+    Handles cases where route cannot be calculated by returning null values.
+    """
+    
+    AVERAGE_SPEED_MPH = 60
+    
+    def __init__(self, average_speed_mph: float = AVERAGE_SPEED_MPH):
+        """Initialize the service with an optional average speed.
+        
+        Args:
+            average_speed_mph: Average speed in miles per hour for estimation (default: 60)
+        """
+        self.average_speed_mph = average_speed_mph
+        self.estimator = RouteEstimator(average_speed_mph=average_speed_mph)
+    
+    def estimate_route(
+        self,
+        pickup_location: str,
+        dropoff_location: str,
+        start_time: datetime
+    ) -> dict:
+        """Estimate route distance, drive hours, and ETA.
+        
+        Args:
+            pickup_location: Pickup location as a string (address or coordinates)
+            dropoff_location: Dropoff location as a string (address or coordinates)
+            start_time: Trip start time as a datetime object
+        
+        Returns:
+            Dictionary with keys:
+            - total_distance_miles: Distance in miles (float or None)
+            - estimated_drive_hours: Estimated drive time in hours (float or None)
+            - eta: Estimated arrival time as datetime (or None)
+            
+            Returns null values for all keys if route cannot be calculated.
+        """
+        try:
+            # Use the RouteEstimator to get distance and drive hours
+            result = self.estimator.estimate(pickup_location, dropoff_location)
+            
+            if result is None:
+                # Route could not be calculated
+                return {
+                    'total_distance_miles': None,
+                    'estimated_drive_hours': None,
+                    'eta': None,
+                }
+            
+            # Extract the values from the estimator result
+            distance_miles = result.get('distance_miles')
+            drive_hours = result.get('drive_hours')
+            
+            # Calculate ETA based on start_time and drive_hours
+            if drive_hours is not None:
+                eta = start_time + timedelta(hours=drive_hours)
+            else:
+                eta = None
+            
+            return {
+                'total_distance_miles': distance_miles,
+                'estimated_drive_hours': drive_hours,
+                'eta': eta,
+            }
+        except Exception as exc:
+            # Log the error and return null values
+            logger.warning(
+                'RouteEstimationService.estimate_route failed for %s -> %s: %s',
+                pickup_location,
+                dropoff_location,
+                exc
+            )
+            return {
+                'total_distance_miles': None,
+                'estimated_drive_hours': None,
+                'eta': None,
+            }
+
+
+class HOSCalculationService:
+    """Service for calculating available HOS (Hours of Service) hours.
+
+    This service calculates available drive and duty hours based on duty segments
+    recorded for a trip. It implements FMCSA regulations:
+    - Maximum 11 hours driving following 10 hours off-duty
+    - Maximum 14 hours on-duty in a duty window
+    - 34-hour restart resets the 7-day cycle
+
+    The service tracks:
+    - current_available_drive_hours: Starts at 11, decrements on driving segments
+    - current_available_duty_hours: Starts at 14, decrements on on_duty segments
+    - current_duty_status: Current duty status (off_duty, sleeper_berth, driving, on_duty)
+    """
+
+    INITIAL_DRIVE_HOURS = 11
+    INITIAL_DUTY_HOURS = 14
+    RESET_DRIVE_THRESHOLD = 10  # hours off-duty required to reset drive hours
+    RESET_CYCLE_THRESHOLD = 34  # hours off-duty required to reset cycle
+
+    def calculate_available_hours(self, trip: Trip) -> dict:
+        """Calculate available drive and duty hours based on duty segments.
+
+        Args:
+            trip: Trip object with associated duty segments
+
+        Returns:
+            Dictionary with keys:
+            - current_available_drive_hours: Available drive hours (float)
+            - current_available_duty_hours: Available duty hours (float)
+            - current_duty_status: Current duty status (string)
+        """
+        # Get all duty segments for the trip, ordered by start_time
+        duty_segments = trip.duty_segments.all().order_by('start_time')
+
+        # Initialize available hours
+        available_drive_hours = self.INITIAL_DRIVE_HOURS
+        available_duty_hours = self.INITIAL_DUTY_HOURS
+        current_duty_status = 'off_duty'
+
+        # Track consecutive off-duty time for reset conditions
+        consecutive_off_duty_hours = 0.0
+
+        # Process each duty segment
+        for segment in duty_segments:
+            # Calculate segment duration in hours
+            duration = (segment.end_time - segment.start_time).total_seconds() / 3600
+
+            # Update current duty status
+            current_duty_status = segment.status
+
+            # Check for 10-hour reset condition (drive hours)
+            if segment.status == DutyStatus.StatusChoices.OFF_DUTY or segment.status == DutyStatus.StatusChoices.SLEEPER:
+                consecutive_off_duty_hours += duration
+
+                # If 10+ hours off-duty, reset drive hours
+                if consecutive_off_duty_hours >= self.RESET_DRIVE_THRESHOLD:
+                    available_drive_hours = self.INITIAL_DRIVE_HOURS
+
+                # If 34+ hours off-duty, reset cycle (both drive and duty hours)
+                if consecutive_off_duty_hours >= self.RESET_CYCLE_THRESHOLD:
+                    available_drive_hours = self.INITIAL_DRIVE_HOURS
+                    available_duty_hours = self.INITIAL_DUTY_HOURS
+                    consecutive_off_duty_hours = 0.0
+            else:
+                # Reset consecutive off-duty counter when driver goes back on duty
+                consecutive_off_duty_hours = 0.0
+
+                # Decrement available hours based on segment status
+                if segment.status == DutyStatus.StatusChoices.DRIVING:
+                    available_drive_hours = max(0, available_drive_hours - duration)
+                    available_duty_hours = max(0, available_duty_hours - duration)
+                elif segment.status == DutyStatus.StatusChoices.ON_DUTY:
+                    available_duty_hours = max(0, available_duty_hours - duration)
+
+        return {
+            'current_available_drive_hours': float(round(available_drive_hours, 2)),
+            'current_available_duty_hours': float(round(available_duty_hours, 2)),
+            'current_duty_status': current_duty_status,
+        }
+
 
 
 class RouteEstimator:

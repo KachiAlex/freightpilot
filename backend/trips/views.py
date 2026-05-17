@@ -1,6 +1,9 @@
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.filters import OrderingFilter
+from django_filters.rest_framework import DjangoFilterBackend
 from django.http import HttpResponse
 import csv
 import io
@@ -9,20 +12,30 @@ from django.utils import timezone
 from trips.models import Trip
 from trips.serializers import TripCreateSerializer, TripSerializer
 from trips.services import RouteEstimator, TripPlannerService
+from rest_framework import serializers
 
 
 from trips.permissions import IsOwnerOrAdmin
 
 
+class TripPagination(PageNumberPagination):
+    """Custom pagination for trips with default limit of 20."""
+    page_size = 20
+    page_size_query_param = 'limit'
+    page_size_query_description = 'Number of results to return per page.'
+    max_page_size = 100
+
+
 class TripViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrAdmin]
     queryset = Trip.objects.select_related('driver', 'vehicle').prefetch_related('duty_segments', 'log_sheets')
+    pagination_class = TripPagination
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filterset_fields = ['status']
+    ordering_fields = ['created_at', 'start_time', 'status']
+    ordering = ['-created_at']
 
     def get_queryset(self):
-        try:
-            print(f"TripViewSet.get_queryset called: user={self.request.user.email if self.request.user.is_authenticated else 'anon'} path={getattr(self.request, 'path', '')} params={dict(self.request.query_params)}")
-        except Exception:
-            print("TripViewSet.get_queryset called")
         user = self.request.user
         if user.role == user.Roles.ADMIN:
             return TripViewSet.queryset
@@ -37,6 +50,11 @@ class TripViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         trip = serializer.save()
+        
+        # Set status to 'draft' initially
+        trip.status = Trip.Status.DRAFT
+        
+        # Call route estimation to calculate distance and ETA
         route_data = RouteEstimator().estimate(trip.pickup_location, trip.dropoff_location)
         if route_data:
             trip.total_distance_miles = route_data['distance_miles']
@@ -46,21 +64,102 @@ class TripViewSet(viewsets.ModelViewSet):
             trip.pickup_longitude = route_data['origin_coords'][1]
             trip.dropoff_latitude = route_data['destination_coords'][0]
             trip.dropoff_longitude = route_data['destination_coords'][1]
-            trip.save(
-                update_fields=[
-                    'total_distance_miles',
-                    'estimated_drive_hours',
-                    'eta',
-                    'pickup_latitude',
-                    'pickup_longitude',
-                    'dropoff_latitude',
-                    'dropoff_longitude',
-                ]
-            )
+        
+        # Initialize HOS values
+        from trips.services import HOSCalculationService
+        hos_service = HOSCalculationService()
+        hos_values = hos_service.calculate_available_hours(trip)
+        trip.current_available_drive_hours = hos_values['current_available_drive_hours']
+        trip.current_available_duty_hours = hos_values['current_available_duty_hours']
+        trip.current_duty_status = hos_values['current_duty_status']
+        
+        # Save the trip with all calculated values (status remains 'draft')
+        trip.save(
+            update_fields=[
+                'status',
+                'total_distance_miles',
+                'estimated_drive_hours',
+                'eta',
+                'pickup_latitude',
+                'pickup_longitude',
+                'dropoff_latitude',
+                'dropoff_longitude',
+                'current_available_drive_hours',
+                'current_available_duty_hours',
+                'current_duty_status',
+            ]
+        )
+        
+        # Generate schedule snapshot for planning purposes (but preserve draft status)
+        # Save the current status before persist() changes it
+        current_status = trip.status
         TripPlannerService(trip).persist()
+        # Restore the draft status if persist() changed it
+        if trip.status != current_status:
+            trip.status = current_status
+            trip.save(update_fields=['status'])
+        
         output_serializer = TripSerializer(trip, context={'request': request})
         headers = self.get_success_headers(output_serializer.data)
         return Response(output_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def list(self, request, *args, **kwargs):
+        """List trips with pagination, filtering, and sorting."""
+        return super().list(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        """Retrieve a single trip with nested duty_segments and log_sheets."""
+        return super().retrieve(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        """Update trip status and handle status transitions."""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        
+        # Validate status transitions
+        new_status = request.data.get('status')
+        if new_status and new_status != instance.status:
+            self._validate_status_transition(instance, new_status)
+            
+            # Record actual_start_time when transitioning to in_progress
+            if new_status == Trip.Status.IN_PROGRESS and not instance.actual_start_time:
+                request.data['actual_start_time'] = timezone.now()
+            
+            # Record actual_end_time when transitioning to completed
+            if new_status == Trip.Status.COMPLETED and not instance.actual_end_time:
+                request.data['actual_end_time'] = timezone.now()
+        
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        if getattr(instance, '_prefetched_objects_cache', None):
+            instance._prefetched_objects_cache = {}
+        
+        return Response(TripSerializer(instance, context={'request': request}).data)
+
+    def _validate_status_transition(self, trip, new_status):
+        """Validate that status transitions follow the allowed flow."""
+        current_status = trip.status
+        
+        # Define allowed transitions
+        allowed_transitions = {
+            Trip.Status.DRAFT: [Trip.Status.PLANNED, Trip.Status.CANCELLED],
+            Trip.Status.PLANNED: [Trip.Status.IN_PROGRESS, Trip.Status.CANCELLED],
+            Trip.Status.IN_PROGRESS: [Trip.Status.COMPLETED, Trip.Status.CANCELLED],
+            Trip.Status.COMPLETED: [],
+            Trip.Status.CANCELLED: [],
+        }
+        
+        if new_status not in allowed_transitions.get(current_status, []):
+            raise serializers.ValidationError(
+                f"Cannot transition from {current_status} to {new_status}"
+            )
+        
+        # Prevent deletion of in_progress trips
+        if current_status == Trip.Status.IN_PROGRESS and new_status == Trip.Status.CANCELLED:
+            # Allow cancellation but could add additional checks here if needed
+            pass
 
     @action(detail=True, methods=['post'])
     def regenerate_schedule(self, request, pk=None):

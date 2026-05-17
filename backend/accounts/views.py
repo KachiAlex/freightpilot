@@ -19,11 +19,16 @@ class RegisterView(generics.CreateAPIView):
     permission_classes = [permissions.AllowAny]
 
     def create(self, request, *args, **kwargs):
-        response = super().create(request, *args, **kwargs)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        
+        # Use UserSerializer for the response to include all user fields
+        user_serializer = UserSerializer(user)
         return Response(
             {
                 "message": "Account created successfully",
-                "user": response.data,
+                "user": user_serializer.data,
             },
             status=status.HTTP_201_CREATED,
         )

@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from rest_framework import serializers
 
 from trips.models import DutyStatus, LogSheet, Trip, Vehicle
@@ -56,6 +57,8 @@ class TripSerializer(serializers.ModelSerializer):
             'dropoff_latitude',
             'dropoff_longitude',
             'start_time',
+            'actual_start_time',
+            'actual_end_time',
             'driver_type',
             'current_cycle_hours_used',
             'current_available_drive_hours',
@@ -75,11 +78,30 @@ class TripSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ('driver',)
 
+    def validate_pickup_location(self, value):
+        """Validate that pickup_location is non-empty."""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Pickup location cannot be empty.")
+        return value
+
+    def validate_dropoff_location(self, value):
+        """Validate that dropoff_location is non-empty."""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Dropoff location cannot be empty.")
+        return value
+
+    def validate_start_time(self, value):
+        """Validate that start_time is not in the past."""
+        if value < timezone.now():
+            raise serializers.ValidationError("Start time cannot be in the past.")
+        return value
+
 
 class TripCreateSerializer(serializers.ModelSerializer):
     vehicle_id = serializers.PrimaryKeyRelatedField(
         queryset=Vehicle.objects.all(), required=False, allow_null=True, source='vehicle'
     )
+    current_location = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = Trip
@@ -93,6 +115,8 @@ class TripCreateSerializer(serializers.ModelSerializer):
             'dropoff_latitude',
             'dropoff_longitude',
             'start_time',
+            'actual_start_time',
+            'actual_end_time',
             'driver_type',
             'current_cycle_hours_used',
             'current_available_drive_hours',
@@ -100,7 +124,26 @@ class TripCreateSerializer(serializers.ModelSerializer):
             'current_duty_status',
             'notes',
             'rest_preferences',
+            'status',
         )
+
+    def validate_pickup_location(self, value):
+        """Validate that pickup_location is non-empty."""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Pickup location cannot be empty.")
+        return value
+
+    def validate_dropoff_location(self, value):
+        """Validate that dropoff_location is non-empty."""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Dropoff location cannot be empty.")
+        return value
+
+    def validate_start_time(self, value):
+        """Validate that start_time is not in the past."""
+        if value < timezone.now():
+            raise serializers.ValidationError("Start time cannot be in the past.")
+        return value
 
     def validate(self, attrs):
         user = self.context['request'].user
@@ -111,4 +154,7 @@ class TripCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         user = self.context['request'].user
+        # Set current_location to pickup_location if not provided
+        if not validated_data.get('current_location'):
+            validated_data['current_location'] = validated_data.get('pickup_location', '')
         return Trip.objects.create(driver=user, **validated_data)

@@ -26,7 +26,11 @@ class UserSerializer(serializers.ModelSerializer):
             'date_joined',
             'updated_at',
         )
-        read_only_fields = fields
+        read_only_fields = (
+            'id',
+            'date_joined',
+            'updated_at',
+        )
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -45,8 +49,40 @@ class RegisterSerializer(serializers.ModelSerializer):
             'phone_number',
         )
 
+    def validate_email(self, value):
+        """Validate email uniqueness (case-insensitive)."""
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("Email already registered")
+        return value
+
+    def validate_password(self, value):
+        """Validate password strength using Django's password validators."""
+        try:
+            validate_password(value)
+        except serializers.ValidationError as e:
+            raise serializers.ValidationError(e.messages)
+        return value
+
+    def validate(self, attrs):
+        """Validate password against user data."""
+        email = attrs.get('email')
+        password = attrs.get('password')
+        
+        # Create a temporary user instance for password validation
+        # This allows validators to check password similarity to email
+        if email and password:
+            temp_user = User(email=email)
+            try:
+                validate_password(password, user=temp_user)
+            except serializers.ValidationError as e:
+                raise serializers.ValidationError({'password': e.messages})
+        
+        return attrs
+
     def create(self, validated_data):
         password = validated_data.pop('password')
+        # Ensure role is set to 'driver' for registration
+        validated_data['role'] = User.Roles.DRIVER
         user = User.objects.create_user(password=password, **validated_data)
         return user
 
@@ -55,6 +91,9 @@ class FreightpilotTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
+        # Add custom claims to JWT token
+        token['user_id'] = str(user.id)
+        token['email'] = user.email
         token['role'] = user.role
         token['full_name'] = user.full_name
         return token

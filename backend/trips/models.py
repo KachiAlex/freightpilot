@@ -44,6 +44,8 @@ class Trip(TimestampedModel):
     dropoff_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     dropoff_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     start_time = models.DateTimeField()
+    actual_start_time = models.DateTimeField(null=True, blank=True)
+    actual_end_time = models.DateTimeField(null=True, blank=True)
     driver_type = models.CharField(max_length=10, choices=DriverType.choices, default=DriverType.SOLO)
     current_cycle_hours_used = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     current_available_drive_hours = models.DecimalField(max_digits=4, decimal_places=2, default=11)

@@ -9,6 +9,7 @@ from accounts.serializers import (
     RegisterSerializer,
     UserSerializer,
 )
+from core.throttling import AuthLoginThrottle, AuthRegisterThrottle
 
 User = get_user_model()
 
@@ -17,6 +18,7 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [AuthRegisterThrottle]
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -45,6 +47,7 @@ class ProfileView(generics.RetrieveUpdateAPIView):
 class PasswordResetRequestView(generics.GenericAPIView):
     serializer_class = PasswordResetRequestSerializer
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [AuthRegisterThrottle]
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)

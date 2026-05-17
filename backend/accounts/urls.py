@@ -9,9 +9,11 @@ from accounts.views import (
     RegisterView,
 )
 from rest_framework_simplejwt.views import TokenObtainPairView
+from core.throttling import AuthLoginThrottle
 
 class FreightpilotTokenObtainPairView(TokenObtainPairView):
     serializer_class = FreightpilotTokenObtainPairSerializer
+    throttle_classes = [AuthLoginThrottle]
 
 app_name = "accounts"
 

@@ -1,15 +1,21 @@
 import { useParams } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
+import { useState } from 'react'
 import type { LatLngTuple } from 'leaflet'
 import { useRegenerateSchedule, useTrip } from '../hooks'
 import { MapPlaceholder } from '../components/MapPlaceholder'
 import { TripDetailHeader } from '../components/TripDetailHeader'
 import LogSheetList from '../components/LogSheetList'
+import { DutySegmentForm } from '../components/DutySegmentForm'
+import { DutySegmentList } from '../components/DutySegmentList'
+import { LogSheetForm } from '../components/LogSheetForm'
 
 export const TripDetailPage = () => {
   const { tripId } = useParams<{ tripId: string }>()
   const { data: trip, isLoading } = useTrip(tripId)
   const regenerateSchedule = useRegenerateSchedule(tripId)
+  const [dutySegmentRefresh, setDutySegmentRefresh] = useState(0)
+  const [logSheetRefresh, setLogSheetRefresh] = useState(0)
 
   const handleRegenerate = () => {
     regenerateSchedule.mutate(undefined, {
@@ -139,9 +145,21 @@ export const TripDetailPage = () => {
       </div>
 
       <div className="mt-8 rounded-3xl border border-white/10 bg-black/30 p-6">
-        <p className="text-xs uppercase tracking-[0.35em] text-slate/70">Saved Logs</p>
-        <div className="mt-4">
-          <LogSheetList tripId={Number(trip.id)} />
+        <p className="text-xs uppercase tracking-[0.35em] text-slate/70">Duty Segments</p>
+        <div className="mt-4 space-y-4">
+          <DutySegmentForm
+            tripId={Number(trip.id)}
+            onSuccess={() => setDutySegmentRefresh((prev) => prev + 1)}
+          />
+          <DutySegmentList tripId={Number(trip.id)} refreshTrigger={dutySegmentRefresh} />
+        </div>
+      </div>
+
+      <div className="mt-8 rounded-3xl border border-white/10 bg-black/30 p-6">
+        <p className="text-xs uppercase tracking-[0.35em] text-slate/70">Log Sheets</p>
+        <div className="mt-4 space-y-4">
+          <LogSheetForm tripId={Number(trip.id)} onSuccess={() => setLogSheetRefresh((prev) => prev + 1)} />
+          <LogSheetList tripId={Number(trip.id)} key={logSheetRefresh} />
         </div>
       </div>
 

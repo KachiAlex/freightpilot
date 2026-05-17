@@ -18,14 +18,14 @@ export const LogSheetList = ({ tripId }: { tripId: number }) => {
   const load = async (url?: string) => {
     setLoading(true)
     try {
-      const fetchUrl = url ?? `/trips/${tripId}/logs/`
+      const fetchUrl = url ?? `/trips/${tripId}/log-sheets/`
       const { data } = await apiClient.get(fetchUrl)
       // support paginated responses
       if (data.results) {
         setSheets((prev) => [...prev, ...data.results])
         setNext(data.next)
       } else {
-        setSheets(data)
+        setSheets(Array.isArray(data) ? data : [])
         setNext(null)
       }
     } catch (err) {
@@ -44,7 +44,7 @@ export const LogSheetList = ({ tripId }: { tripId: number }) => {
   const handleDelete = async (id: number) => {
     if (!confirm('Delete this log?')) return
     try {
-      await apiClient.delete(`/trips/${tripId}/logs/${id}/`)
+      await apiClient.delete(`/trips/${tripId}/log-sheets/${id}/`)
       setSheets((prev) => prev.filter((s) => s.id !== id))
     } catch (err) {
       // eslint-disable-next-line no-console

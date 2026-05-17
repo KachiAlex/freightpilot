@@ -4,11 +4,15 @@ import { useAuth } from '../context'
 import { MapPlaceholder } from '../components/MapPlaceholder'
 import { TripList } from '../components/TripList'
 import { TripPlannerForm } from '../components/TripPlannerForm'
+import { VehicleList } from '../components/VehicleList'
+import { VehicleForm } from '../components/VehicleForm'
 
 export const DashboardPage = () => {
   const { user, logout } = useAuth()
   const [pickup, setPickup] = useState('')
   const [dropoff, setDropoff] = useState('')
+  const [showVehicleForm, setShowVehicleForm] = useState(false)
+  const [vehicleRefresh, setVehicleRefresh] = useState(0)
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-12 text-white">
@@ -42,6 +46,32 @@ export const DashboardPage = () => {
         <h2 className="text-2xl font-semibold">Auto-generated schedules</h2>
         <div className="mt-4">
           <TripList />
+        </div>
+      </div>
+
+      <div className="mt-10">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.35em] text-slate/70">Vehicle management</p>
+            <h2 className="text-2xl font-semibold">Your vehicles</h2>
+          </div>
+          <button
+            onClick={() => setShowVehicleForm(!showVehicleForm)}
+            className="rounded-2xl border border-white/20 px-4 py-2 text-sm text-slate hover:border-sky/60 hover:text-white"
+          >
+            {showVehicleForm ? 'Cancel' : 'Add Vehicle'}
+          </button>
+        </div>
+        <div className="mt-4 space-y-6">
+          {showVehicleForm && (
+            <VehicleForm
+              onSuccess={() => {
+                setShowVehicleForm(false)
+                setVehicleRefresh((prev) => prev + 1)
+              }}
+            />
+          )}
+          <VehicleList key={vehicleRefresh} />
         </div>
       </div>
     </div>

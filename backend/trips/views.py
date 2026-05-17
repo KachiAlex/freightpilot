@@ -9,9 +9,9 @@ import csv
 import io
 from django.utils import timezone
 
-from trips.models import Trip
-from trips.serializers import TripCreateSerializer, TripSerializer
-from trips.services import RouteEstimator, TripPlannerService
+from trips.models import Trip, DutyStatus, LogSheet
+from trips.serializers import TripCreateSerializer, TripSerializer, DutyStatusSerializer, LogSheetSerializer
+from trips.services import RouteEstimator, TripPlannerService, LogSheetService
 from rest_framework import serializers
 
 
@@ -317,4 +317,267 @@ class TripViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
 
         sheet.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+
+class DutySegmentViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing duty segments (DutyStatus records) for a trip."""
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrAdmin]
+    serializer_class = DutyStatusSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        """Return duty segments for the specified trip, filtered by user."""
+        trip_id = self.kwargs.get('trip_id')
+        user = self.request.user
+        
+        # Get the trip and check permissions
+        try:
+            trip = Trip.objects.get(id=trip_id)
+        except Trip.DoesNotExist:
+            return DutyStatus.objects.none()
+        
+        # Check if user is the trip owner or admin
+        if trip.driver != user and getattr(user, 'role', None) != user.Roles.ADMIN:
+            return DutyStatus.objects.none()
+        
+        return trip.duty_segments.all()
+
+    def create(self, request, *args, **kwargs):
+        """Create a new duty segment for the trip."""
+        trip_id = self.kwargs.get('trip_id')
+        
+        # Get the trip and check permissions
+        try:
+            trip = Trip.objects.get(id=trip_id)
+        except Trip.DoesNotExist:
+            return Response({'detail': 'Trip not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if user is the trip owner or admin
+        if trip.driver != request.user and getattr(request.user, 'role', None) != request.user.Roles.ADMIN:
+            return Response({'detail': 'You do not have permission to access this trip'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Add trip to the data
+        data = request.data.copy()
+        data['trip'] = trip_id
+        
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        duty_segment = serializer.save(trip=trip)
+        
+        # Update trip's current_duty_status
+        trip.current_duty_status = duty_segment.status
+        
+        # Recalculate HOS
+        from trips.services import HOSCalculationService
+        hos_service = HOSCalculationService()
+        hos_values = hos_service.calculate_available_hours(trip)
+        trip.current_available_drive_hours = hos_values['current_available_drive_hours']
+        trip.current_available_duty_hours = hos_values['current_available_duty_hours']
+        trip.current_cycle_hours_used = hos_values.get('current_cycle_hours_used', trip.current_cycle_hours_used)
+        
+        trip.save(update_fields=[
+            'current_duty_status',
+            'current_available_drive_hours',
+            'current_available_duty_hours',
+            'current_cycle_hours_used',
+        ])
+        
+        output_serializer = DutyStatusSerializer(duty_segment)
+        headers = self.get_success_headers(output_serializer.data)
+        return Response(output_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def list(self, request, *args, **kwargs):
+        """List all duty segments for the trip in chronological order."""
+        trip_id = self.kwargs.get('trip_id')
+        
+        # Get the trip and check permissions
+        try:
+            trip = Trip.objects.get(id=trip_id)
+        except Trip.DoesNotExist:
+            return Response({'detail': 'Trip not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if user is the trip owner or admin
+        if trip.driver != request.user and getattr(request.user, 'role', None) != request.user.Roles.ADMIN:
+            return Response({'detail': 'You do not have permission to access this trip'}, status=status.HTTP_403_FORBIDDEN)
+        
+        queryset = self.get_queryset().order_by('start_time')
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        """Retrieve a single duty segment."""
+        instance = self.get_object()
+        trip = instance.trip
+        
+        # Check permissions
+        if trip.driver != request.user and getattr(request.user, 'role', None) != request.user.Roles.ADMIN:
+            return Response({'detail': 'You do not have permission to access this trip'}, status=status.HTTP_403_FORBIDDEN)
+        
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    def get_object(self):
+        """Get a duty segment by pk, ensuring it belongs to the specified trip."""
+        trip_id = self.kwargs.get('trip_id')
+        pk = self.kwargs.get('pk')
+        
+        try:
+            trip = Trip.objects.get(id=trip_id)
+            duty_segment = DutyStatus.objects.get(id=pk, trip=trip)
+            return duty_segment
+        except (Trip.DoesNotExist, DutyStatus.DoesNotExist):
+            from rest_framework.exceptions import NotFound
+            raise NotFound('Duty segment not found')
+
+    def update(self, request, *args, **kwargs):
+        """Update a duty segment."""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        trip = instance.trip
+        
+        # Check permissions
+        if trip.driver != request.user and getattr(request.user, 'role', None) != request.user.Roles.ADMIN:
+            return Response({'detail': 'You do not have permission to access this trip'}, status=status.HTTP_403_FORBIDDEN)
+        
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        duty_segment = serializer.save()
+        
+        # Update trip's current_duty_status
+        trip.current_duty_status = duty_segment.status
+        
+        # Recalculate HOS
+        from trips.services import HOSCalculationService
+        hos_service = HOSCalculationService()
+        hos_values = hos_service.calculate_available_hours(trip)
+        trip.current_available_drive_hours = hos_values['current_available_drive_hours']
+        trip.current_available_duty_hours = hos_values['current_available_duty_hours']
+        trip.current_cycle_hours_used = hos_values.get('current_cycle_hours_used', trip.current_cycle_hours_used)
+        
+        trip.save(update_fields=[
+            'current_duty_status',
+            'current_available_drive_hours',
+            'current_available_duty_hours',
+            'current_cycle_hours_used',
+        ])
+        
+        output_serializer = DutyStatusSerializer(duty_segment)
+        return Response(output_serializer.data)
+
+
+class LogSheetViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing log sheets (LogSheet records) for a trip."""
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrAdmin]
+    serializer_class = LogSheetSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        """Return log sheets for the specified trip, filtered by user."""
+        trip_id = self.kwargs.get('trip_id')
+        user = self.request.user
+        
+        # Get the trip and check permissions
+        try:
+            trip = Trip.objects.get(id=trip_id)
+        except Trip.DoesNotExist:
+            return LogSheet.objects.none()
+        
+        # Check if user is the trip owner or admin
+        if trip.driver != user and getattr(user, 'role', None) != user.Roles.ADMIN:
+            return LogSheet.objects.none()
+        
+        return trip.log_sheets.all()
+
+    def create(self, request, *args, **kwargs):
+        """Create a new log sheet for the trip."""
+        trip_id = self.kwargs.get('trip_id')
+        
+        # Get the trip and check permissions
+        try:
+            trip = Trip.objects.get(id=trip_id)
+        except Trip.DoesNotExist:
+            return Response({'detail': 'Trip not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if user is the trip owner or admin
+        if trip.driver != request.user and getattr(request.user, 'role', None) != request.user.Roles.ADMIN:
+            return Response({'detail': 'You do not have permission to access this trip'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get date parameter from request
+        date_str = request.data.get('date')
+        if not date_str:
+            return Response({'detail': 'date parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Parse date
+        try:
+            from datetime import datetime
+            log_date = datetime.fromisoformat(date_str).date()
+        except (ValueError, TypeError):
+            return Response({'detail': 'Invalid date format. Use YYYY-MM-DD'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Generate log sheet using LogSheetService
+        try:
+            service = LogSheetService()
+            log_sheet = service.generate_log_sheet(trip, log_date)
+        except Exception as exc:
+            return Response({'detail': f'Failed to generate log sheet: {str(exc)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Serialize and return
+        serializer = LogSheetSerializer(log_sheet, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def list(self, request, *args, **kwargs):
+        """List all log sheets for the trip."""
+        trip_id = self.kwargs.get('trip_id')
+        
+        # Get the trip and check permissions
+        try:
+            trip = Trip.objects.get(id=trip_id)
+        except Trip.DoesNotExist:
+            return Response({'detail': 'Trip not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if user is the trip owner or admin
+        if trip.driver != request.user and getattr(request.user, 'role', None) != request.user.Roles.ADMIN:
+            return Response({'detail': 'You do not have permission to access this trip'}, status=status.HTTP_403_FORBIDDEN)
+        
+        queryset = self.get_queryset().order_by('-date')
+        serializer = LogSheetSerializer(queryset, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        """Retrieve a single log sheet."""
+        instance = self.get_object()
+        trip = instance.trip
+        
+        # Check permissions
+        if trip.driver != request.user and getattr(request.user, 'role', None) != request.user.Roles.ADMIN:
+            return Response({'detail': 'You do not have permission to access this trip'}, status=status.HTTP_403_FORBIDDEN)
+        
+        serializer = LogSheetSerializer(instance, context={'request': request})
+        return Response(serializer.data)
+
+    def get_object(self):
+        """Get a log sheet by pk, ensuring it belongs to the specified trip."""
+        trip_id = self.kwargs.get('trip_id')
+        pk = self.kwargs.get('pk')
+        
+        try:
+            trip = Trip.objects.get(id=trip_id)
+            log_sheet = LogSheet.objects.get(id=pk, trip=trip)
+            return log_sheet
+        except (Trip.DoesNotExist, LogSheet.DoesNotExist):
+            from rest_framework.exceptions import NotFound
+            raise NotFound('Log sheet not found')
+
+    def destroy(self, request, *args, **kwargs):
+        """Delete a log sheet."""
+        instance = self.get_object()
+        trip = instance.trip
+        
+        # Check permissions
+        if trip.driver != request.user and getattr(request.user, 'role', None) != request.user.Roles.ADMIN:
+            return Response({'detail': 'You do not have permission to access this trip'}, status=status.HTTP_403_FORBIDDEN)
+        
+        instance.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

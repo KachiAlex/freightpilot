@@ -74,7 +74,13 @@ class DutyStatus(TimestampedModel):
     status = models.CharField(max_length=20, choices=StatusChoices.choices)
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
+    duration_hours = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     remarks = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['trip', 'start_time']),
+        ]
 
     def __str__(self):
         return f"{self.trip_id} - {self.status}"
@@ -90,6 +96,9 @@ class LogSheet(TimestampedModel):
 
     class Meta:
         unique_together = ('trip', 'date')
+        indexes = [
+            models.Index(fields=['trip', 'date']),
+        ]
 
     def __str__(self):
         return f"Log {self.date} / Trip {self.trip_id}"

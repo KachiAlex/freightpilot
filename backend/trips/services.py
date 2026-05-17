@@ -469,6 +469,364 @@ class RouteEstimator:
         }
 
 
+class LogSheetService:
+    """Service for generating FMCSA-compliant log sheets with PDF and thumbnails.
+    
+    This service:
+    - Extracts duty segments for a specified date
+    - Creates duty status graph data in JSON format
+    - Generates FMCSA-compliant PDF using ReportLab
+    - Creates a thumbnail image using PIL/Pillow
+    - Stores all data in a LogSheet record
+    """
+    
+    def generate_log_sheet(self, trip: Trip, date) -> 'LogSheet':
+        """Generate a complete log sheet for a trip on a specific date.
+        
+        Args:
+            trip: Trip object to generate log sheet for
+            date: Date object for the log sheet
+        
+        Returns:
+            LogSheet object with PDF, thumbnail, and graph_data populated
+        """
+        from trips.models import LogSheet
+        from django.core.files.base import ContentFile
+        from datetime import date as date_type
+        
+        # Ensure date is a date object
+        if isinstance(date, datetime):
+            date = date.date()
+        
+        # Extract duty segments for the specified date
+        duty_segments = self._extract_segments_for_date(trip, date)
+        
+        # Create graph data from duty segments
+        graph_data = self._create_graph_data(duty_segments)
+        
+        # Generate PDF
+        pdf_bytes = self._generate_pdf(trip, duty_segments, date)
+        
+        # Generate thumbnail
+        thumbnail_bytes = self._generate_thumbnail(duty_segments, date)
+        
+        # Create or update LogSheet record
+        log_sheet, created = LogSheet.objects.get_or_create(
+            trip=trip,
+            date=date,
+            defaults={
+                'graph_data': graph_data,
+            }
+        )
+        
+        # Save PDF file
+        if pdf_bytes:
+            pdf_filename = f"log_{trip.id}_{date.isoformat()}.pdf"
+            log_sheet.pdf_file.save(pdf_filename, ContentFile(pdf_bytes), save=False)
+        
+        # Save thumbnail
+        if thumbnail_bytes:
+            thumbnail_filename = f"log_{trip.id}_{date.isoformat()}.png"
+            log_sheet.thumbnail.save(thumbnail_filename, ContentFile(thumbnail_bytes), save=False)
+        
+        # Update graph_data
+        log_sheet.graph_data = graph_data
+        log_sheet.save()
+        
+        return log_sheet
+    
+    def _extract_segments_for_date(self, trip: Trip, date) -> list:
+        """Extract duty segments that fall on the specified date.
+        
+        Args:
+            trip: Trip object
+            date: Date object
+        
+        Returns:
+            List of DutyStatus objects for the date
+        """
+        from datetime import date as date_type
+        
+        # Ensure date is a date object
+        if isinstance(date, datetime):
+            date = date.date()
+        
+        # Get all duty segments for the trip
+        all_segments = trip.duty_segments.all().order_by('start_time')
+        
+        # Filter segments that overlap with the specified date
+        segments_for_date = []
+        for segment in all_segments:
+            segment_date = segment.start_time.date()
+            if segment_date == date:
+                segments_for_date.append(segment)
+        
+        return segments_for_date
+    
+    def _create_graph_data(self, duty_segments: list) -> dict:
+        """Create duty status graph data in JSON format.
+        
+        Args:
+            duty_segments: List of DutyStatus objects
+        
+        Returns:
+            Dictionary with graph data including timeline and statistics
+        """
+        timeline = []
+        status_counts = {
+            'driving': 0.0,
+            'on_duty': 0.0,
+            'sleeper_berth': 0.0,
+            'off_duty': 0.0,
+        }
+        
+        for segment in duty_segments:
+            duration_hours = (segment.end_time - segment.start_time).total_seconds() / 3600
+            
+            timeline.append({
+                'status': segment.status,
+                'start_time': segment.start_time.isoformat(),
+                'end_time': segment.end_time.isoformat(),
+                'duration_hours': round(duration_hours, 2),
+                'remarks': segment.remarks or '',
+            })
+            
+            # Accumulate status counts
+            if segment.status in status_counts:
+                status_counts[segment.status] += duration_hours
+        
+        return {
+            'timeline': timeline,
+            'status_summary': {
+                'driving_hours': round(status_counts['driving'], 2),
+                'on_duty_hours': round(status_counts['on_duty'], 2),
+                'sleeper_berth_hours': round(status_counts['sleeper_berth'], 2),
+                'off_duty_hours': round(status_counts['off_duty'], 2),
+                'total_hours': round(sum(status_counts.values()), 2),
+            },
+        }
+    
+    def _generate_pdf(self, trip: Trip, duty_segments: list, date) -> bytes:
+        """Generate FMCSA-compliant PDF using ReportLab.
+        
+        Args:
+            trip: Trip object
+            duty_segments: List of DutyStatus objects for the date
+            date: Date object
+        
+        Returns:
+            PDF bytes
+        """
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
+        from reportlab.lib import colors
+        
+        pdf_buffer = io.BytesIO()
+        c = canvas.Canvas(pdf_buffer, pagesize=letter)
+        width, height = letter
+        y = height - 40
+        
+        # Header
+        c.setFont('Helvetica-Bold', 14)
+        c.drawString(40, y, f"FMCSA Log Sheet - Trip {trip.id}")
+        y -= 18
+        
+        c.setFont('Helvetica', 10)
+        c.drawString(40, y, f"Date: {date.isoformat()}")
+        y -= 14
+        c.drawString(40, y, f"Driver: {trip.driver.full_name}")
+        y -= 14
+        c.drawString(40, y, f"Vehicle: {trip.vehicle.truck_number if trip.vehicle else 'N/A'}")
+        y -= 18
+        
+        # Summary statistics
+        c.setFont('Helvetica-Bold', 11)
+        c.drawString(40, y, 'Daily Summary')
+        y -= 14
+        
+        c.setFont('Helvetica', 9)
+        total_driving = 0.0
+        total_on_duty = 0.0
+        total_sleeper = 0.0
+        total_off_duty = 0.0
+        
+        for segment in duty_segments:
+            duration = (segment.end_time - segment.start_time).total_seconds() / 3600
+            if segment.status == DutyStatus.StatusChoices.DRIVING:
+                total_driving += duration
+            elif segment.status == DutyStatus.StatusChoices.ON_DUTY:
+                total_on_duty += duration
+            elif segment.status == DutyStatus.StatusChoices.SLEEPER:
+                total_sleeper += duration
+            elif segment.status == DutyStatus.StatusChoices.OFF_DUTY:
+                total_off_duty += duration
+        
+        c.drawString(40, y, f"Driving: {total_driving:.2f} hours")
+        y -= 12
+        c.drawString(40, y, f"On-Duty: {total_on_duty:.2f} hours")
+        y -= 12
+        c.drawString(40, y, f"Sleeper Berth: {total_sleeper:.2f} hours")
+        y -= 12
+        c.drawString(40, y, f"Off-Duty: {total_off_duty:.2f} hours")
+        y -= 18
+        
+        # Timeline graph: horizontal bar representing segments proportionally
+        if duty_segments:
+            try:
+                starts = [seg.start_time for seg in duty_segments]
+                ends = [seg.end_time for seg in duty_segments]
+                min_t = min(starts)
+                max_t = max(ends)
+                span_seconds = max(1, (max_t - min_t).total_seconds())
+                
+                bar_x = 40
+                bar_w = width - 80
+                bar_h = 14
+                bar_y = y - bar_h
+                
+                # Draw background
+                c.setFillColor(colors.lightgrey)
+                c.rect(bar_x, bar_y, bar_w, bar_h, fill=1, stroke=0)
+                
+                # Status color mapping
+                status_colors = {
+                    DutyStatus.StatusChoices.DRIVING: colors.green,
+                    DutyStatus.StatusChoices.OFF_DUTY: colors.gray,
+                    DutyStatus.StatusChoices.SLEEPER: colors.blue,
+                    DutyStatus.StatusChoices.ON_DUTY: colors.orange,
+                }
+                
+                for segment in duty_segments:
+                    start_frac = (segment.start_time - min_t).total_seconds() / span_seconds
+                    end_frac = (segment.end_time - min_t).total_seconds() / span_seconds
+                    rx = bar_x + start_frac * bar_w
+                    rw = max(1, (end_frac - start_frac) * bar_w)
+                    color = status_colors.get(segment.status, colors.lightblue)
+                    c.setFillColor(color)
+                    c.rect(rx, bar_y, rw, bar_h, fill=1, stroke=0)
+                
+                # Labels
+                c.setFillColor(colors.black)
+                c.setFont('Helvetica', 8)
+                c.drawString(bar_x, bar_y - 12, min_t.strftime('%H:%M'))
+                c.drawRightString(bar_x + bar_w, bar_y - 12, max_t.strftime('%H:%M'))
+                y = bar_y - 24
+            except Exception as e:
+                logger.warning('Failed to draw timeline graph: %s', e)
+                y -= 10
+        
+        # Table header
+        c.setFont('Helvetica-Bold', 10)
+        c.drawString(40, y, 'Start Time')
+        c.drawString(150, y, 'End Time')
+        c.drawString(260, y, 'Status')
+        c.drawString(380, y, 'Duration (hrs)')
+        y -= 14
+        c.setFont('Helvetica', 9)
+        
+        # Table rows
+        for segment in duty_segments:
+            if y < 60:
+                c.showPage()
+                y = height - 40
+            
+            duration = (segment.end_time - segment.start_time).total_seconds() / 3600
+            c.drawString(40, y, segment.start_time.strftime('%H:%M'))
+            c.drawString(150, y, segment.end_time.strftime('%H:%M'))
+            c.drawString(260, y, segment.status.replace('_', ' ').title())
+            c.drawString(380, y, f"{duration:.2f}")
+            y -= 12
+        
+        # Footer
+        c.setFont('Helvetica', 8)
+        c.drawString(40, 20, f"Generated: {timezone.now().isoformat()}")
+        c.drawRightString(width - 40, 20, "FMCSA Compliant Log Sheet")
+        
+        c.showPage()
+        c.save()
+        
+        pdf_data = pdf_buffer.getvalue()
+        pdf_buffer.close()
+        
+        return pdf_data
+    
+    def _generate_thumbnail(self, duty_segments: list, date) -> bytes:
+        """Generate a thumbnail image of the log sheet using PIL/Pillow.
+        
+        Args:
+            duty_segments: List of DutyStatus objects for the date
+            date: Date object
+        
+        Returns:
+            PNG bytes or None if thumbnail generation fails
+        """
+        try:
+            from PIL import Image, ImageDraw
+            
+            # Create a simple timeline visualization
+            width = 400
+            height = 100
+            img = Image.new('RGB', (width, height), color='white')
+            draw = ImageDraw.Draw(img)
+            
+            # Draw border
+            draw.rectangle([0, 0, width - 1, height - 1], outline='black', width=1)
+            
+            if not duty_segments:
+                # Empty log sheet
+                draw.text((10, 10), "No duty segments", fill='black')
+            else:
+                # Calculate timeline
+                starts = [seg.start_time for seg in duty_segments]
+                ends = [seg.end_time for seg in duty_segments]
+                min_t = min(starts)
+                max_t = max(ends)
+                span_seconds = max(1, (max_t - min_t).total_seconds())
+                
+                # Status color mapping (RGB tuples)
+                status_colors = {
+                    DutyStatus.StatusChoices.DRIVING: (0, 200, 0),  # Green
+                    DutyStatus.StatusChoices.OFF_DUTY: (128, 128, 128),  # Gray
+                    DutyStatus.StatusChoices.SLEEPER: (0, 0, 255),  # Blue
+                    DutyStatus.StatusChoices.ON_DUTY: (255, 165, 0),  # Orange
+                }
+                
+                # Draw timeline bar
+                bar_y = 30
+                bar_h = 30
+                bar_x = 20
+                bar_w = width - 40
+                
+                # Draw background
+                draw.rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], fill=(200, 200, 200))
+                
+                # Draw segments
+                for segment in duty_segments:
+                    start_frac = (segment.start_time - min_t).total_seconds() / span_seconds
+                    end_frac = (segment.end_time - min_t).total_seconds() / span_seconds
+                    
+                    seg_x1 = bar_x + int(start_frac * bar_w)
+                    seg_x2 = bar_x + int(end_frac * bar_w)
+                    seg_x2 = max(seg_x1 + 1, seg_x2)  # Ensure minimum width
+                    
+                    color = status_colors.get(segment.status, (100, 100, 255))
+                    draw.rectangle([seg_x1, bar_y, seg_x2, bar_y + bar_h], fill=color)
+                
+                # Draw labels
+                draw.text((10, 65), f"Date: {date.isoformat()}", fill='black')
+            
+            # Save to bytes
+            thumb_buffer = io.BytesIO()
+            img.save(thumb_buffer, format='PNG')
+            thumb_data = thumb_buffer.getvalue()
+            thumb_buffer.close()
+            
+            return thumb_data
+        except Exception as e:
+            logger.warning('Failed to generate thumbnail: %s', e)
+            return None
+
+
 def generate_log_pdf(trip, rows, export_date):
     """Generate a PDF bytes object for the given trip and rows (list of rows).
 

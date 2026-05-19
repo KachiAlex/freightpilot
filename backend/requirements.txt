@@ -23,8 +23,6 @@ sqlparse==0.5.5
 tzdata==2026.2
 uritemplate==4.2.0
 urllib3==2.7.0
-reportlab==4.0.0
-matplotlib
 Pillow
 drf-nested-routers==0.93.4
 django-filter==24.1

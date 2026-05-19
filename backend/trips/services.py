@@ -609,17 +609,24 @@ class LogSheetService:
     def _generate_pdf(self, trip: Trip, duty_segments: list, date) -> bytes:
         """Generate FMCSA-compliant PDF using ReportLab.
         
+        Note: PDF generation is disabled in deployment environments that don't support
+        system dependencies like Cairo. Returns None in such cases.
+        
         Args:
             trip: Trip object
             duty_segments: List of DutyStatus objects for the date
             date: Date object
         
         Returns:
-            PDF bytes
+            PDF bytes or None if generation is not available
         """
-        from reportlab.lib.pagesizes import letter
-        from reportlab.pdfgen import canvas
-        from reportlab.lib import colors
+        try:
+            from reportlab.lib.pagesizes import letter
+            from reportlab.pdfgen import canvas
+            from reportlab.lib import colors
+        except ImportError:
+            logger.warning('ReportLab not available - PDF generation disabled')
+            return None
         
         pdf_buffer = io.BytesIO()
         c = canvas.Canvas(pdf_buffer, pagesize=letter)
@@ -831,12 +838,15 @@ def generate_log_pdf(trip, rows, export_date):
     """Generate a PDF bytes object for the given trip and rows (list of rows).
 
     Each row should be: [start_time, end_time, status, remarks, duration_str]
-    Returns: bytes of PDF
+    Returns: bytes of PDF or None if reportlab is not available
     """
-    from reportlab.lib.pagesizes import letter
-    from reportlab.pdfgen import canvas
-
-    from reportlab.lib import colors
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
+        from reportlab.lib import colors
+    except ImportError:
+        logger.warning('ReportLab not available - PDF generation disabled')
+        return None
 
     # TODO: Generate PNG thumbnail using Pillow (PIL) instead of matplotlib
     # Matplotlib tends to hang in test environments. Use simple PIL drawing instead.

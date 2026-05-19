@@ -27,6 +27,7 @@
     "react-router-dom": "^7.15.0"
   },
   "devDependencies": {
+    "@axe-core/react": "^4.11.3",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.48.0",
     "@tailwindcss/postcss": "^4.3.0",

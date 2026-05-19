@@ -1,9 +1,10 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
+import { vi } from 'vitest';
 import { Footer } from './Footer';
 
 // Mock the Container component
-jest.mock('./Container', () => ({
+vi.mock('./Container', () => ({
   Container: ({ children }: any) => <div>{children}</div>,
 }));
 

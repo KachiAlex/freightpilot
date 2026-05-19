@@ -1,9 +1,10 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { vi } from 'vitest';
 import { Navigation } from './Navigation';
 
 // Mock the Button component to avoid dependency issues
-jest.mock('./Button', () => ({
+vi.mock('./Button', () => ({
   Button: ({ children, onClick, ...props }: any) => (
     <button onClick={onClick} {...props}>
       {children}

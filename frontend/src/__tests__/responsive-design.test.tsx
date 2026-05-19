@@ -1628,8 +1628,8 @@ describe('Responsive Design - Breakpoints', () => {
         </section>
       );
 
-      const section = container.firstChild;
-      expect(section.className).toMatch(/py-/);
+      const section = container.firstChild as HTMLElement | null;
+      expect(section?.className).toMatch(/py-/);
     });
 
     it('should apply responsive horizontal padding', () => {
@@ -1639,8 +1639,8 @@ describe('Responsive Design - Breakpoints', () => {
         </section>
       );
 
-      const section = container.firstChild;
-      expect(section.className).toMatch(/px-/);
+      const section = container.firstChild as HTMLElement | null;
+      expect(section?.className).toMatch(/px-/);
     });
   });
 
@@ -1840,9 +1840,9 @@ describe('Responsive Design - Comprehensive Breakpoint Testing', () => {
         </section>
       );
 
-      const section = container.firstChild;
-      expect(section.className).toMatch(/px-md/);
-      expect(section.className).toMatch(/py-3xl/);
+      const section = container.firstChild as HTMLElement | null;
+      expect(section?.className).toMatch(/px-md/);
+      expect(section?.className).toMatch(/py-3xl/);
     });
   });
 
@@ -1985,9 +1985,9 @@ describe('Responsive Design - Comprehensive Breakpoint Testing', () => {
         </section>
       );
 
-      const section = container.firstChild;
-      expect(section.className).toMatch(/tablet:px-lg/);
-      expect(section.className).toMatch(/tablet:py-3xl/);
+      const section = container.firstChild as HTMLElement | null;
+      expect(section?.className).toMatch(/tablet:px-lg/);
+      expect(section?.className).toMatch(/tablet:py-3xl/);
     });
 
     it('should render metrics in two-column grid on tablet', () => {
@@ -2117,9 +2117,9 @@ describe('Responsive Design - Comprehensive Breakpoint Testing', () => {
         </section>
       );
 
-      const section = container.firstChild;
-      expect(section.className).toMatch(/desktop:px-lg/);
-      expect(section.className).toMatch(/desktop:py-4xl/);
+      const section = container.firstChild as HTMLElement | null;
+      expect(section?.className).toMatch(/desktop:px-lg/);
+      expect(section?.className).toMatch(/desktop:py-4xl/);
     });
 
     it('should render metrics in three-column grid on desktop', () => {

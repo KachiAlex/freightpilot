@@ -155,27 +155,27 @@ describe('HomePage - Responsive Design', () => {
     it('should handle primary CTA click', () => {
       const originalLocation = window.location;
       delete (window as any).location;
-      window.location = { ...originalLocation, href: '' } as any;
+      (window as any).location = { ...originalLocation, href: '' };
 
       render(<HomePage />);
       
       // The component should be renderable without errors
       expect(screen.getByTestId('hero-section')).toBeInTheDocument();
 
-      window.location = originalLocation;
+      (window as any).location = originalLocation;
     });
 
     it('should handle secondary CTA click', () => {
       const originalLocation = window.location;
       delete (window as any).location;
-      window.location = { ...originalLocation, href: '' } as any;
+      (window as any).location = { ...originalLocation, href: '' };
 
       render(<HomePage />);
       
       // The component should be renderable without errors
       expect(screen.getByTestId('hero-section')).toBeInTheDocument();
 
-      window.location = originalLocation;
+      (window as any).location = originalLocation;
     });
   });
 

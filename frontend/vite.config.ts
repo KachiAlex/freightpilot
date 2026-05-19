@@ -8,10 +8,14 @@ export default defineConfig({
     // Code splitting optimization
     rollupOptions: {
       output: {
-        manualChunks: {
+        manualChunks(id) {
           // Split vendor chunks for better caching
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'ui-vendor': ['@tanstack/react-query'],
+          if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
+            return 'react-vendor'
+          }
+          if (id.includes('@tanstack/react-query')) {
+            return 'ui-vendor'
+          }
         },
       },
     },

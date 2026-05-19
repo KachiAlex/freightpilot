@@ -62,17 +62,17 @@ export const HomePage: React.FC = () => {
         </section>
 
         {/* Feature Highlights Section */}
-        <section>
+        <section id="product">
           <FeatureHighlights />
         </section>
 
         {/* Workflow Section */}
-        <section>
+        <section id="workflow">
           <WorkflowSection />
         </section>
 
         {/* Metrics Section */}
-        <section>
+        <section id="compliance">
           <MetricsSection />
         </section>
 

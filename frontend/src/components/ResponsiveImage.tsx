@@ -1,4 +1,4 @@
-import React, { ImgHTMLAttributes, useMemo } from 'react';
+import React, { type ImgHTMLAttributes, useMemo } from 'react';
 
 interface ResponsiveImageProps extends ImgHTMLAttributes<HTMLImageElement> {
   /**

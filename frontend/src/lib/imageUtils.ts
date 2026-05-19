@@ -45,7 +45,7 @@ export const ASPECT_RATIOS = {
  */
 export function generateResponsiveImageUrls(
   baseUrl: string,
-  widths: number[] = RESPONSIVE_WIDTHS
+  widths: readonly number[] = RESPONSIVE_WIDTHS
 ): Record<string, string> {
   const ext = baseUrl.substring(baseUrl.lastIndexOf('.'));
   const baseName = baseUrl.substring(0, baseUrl.lastIndexOf('.'));
@@ -87,7 +87,7 @@ export function generateWebPUrl(pngUrl: string): string {
  */
 export function generateSrcSet(
   baseUrl: string,
-  widths: number[] = RESPONSIVE_WIDTHS
+  widths: readonly number[] = RESPONSIVE_WIDTHS
 ): string {
   const ext = baseUrl.substring(baseUrl.lastIndexOf('.'));
   const baseName = baseUrl.substring(0, baseUrl.lastIndexOf('.'));

@@ -30,7 +30,7 @@ interface NavigationProps {
  */
 export const Navigation: React.FC<NavigationProps> = ({ testId }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLElement | null>(null);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
 
@@ -221,7 +221,7 @@ export const Navigation: React.FC<NavigationProps> = ({ testId }) => {
           id="mobile-menu"
           ref={(el) => {
             menuRef.current = el;
-            if (el) focusTrapRef.current = el;
+            if (el) focusTrapRef.current = el as HTMLDivElement;
           }}
           aria-label="Mobile navigation menu"
         >

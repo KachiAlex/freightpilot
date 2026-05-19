@@ -165,7 +165,7 @@ export function useResponsiveImage(options: UseResponsiveImageOptions): UseRespo
   const [isLoading, setIsLoading] = useState(true);
   const [isLoaded, setIsLoaded] = useState(false);
   const [error, setError] = useState<Error | null>(null);
-  const [optimalWidth, setOptimalWidth] = useState(VIEWPORT_SIZES.desktop);
+  const [optimalWidth, setOptimalWidth] = useState<number>(VIEWPORT_SIZES.desktop);
   const [optimalHeight, setOptimalHeight] = useState(0);
 
   // Check WebP support on mount
@@ -197,7 +197,7 @@ export function useResponsiveImage(options: UseResponsiveImageOptions): UseRespo
     if (!dimensions) return;
 
     const viewport = window.innerWidth;
-    let width = VIEWPORT_SIZES.desktop;
+    let width: number = VIEWPORT_SIZES.desktop;
 
     if (viewport < 768) {
       width = VIEWPORT_SIZES.mobile;

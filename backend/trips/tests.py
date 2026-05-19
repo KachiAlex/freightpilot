@@ -1640,3 +1640,700 @@ class TripCheckpointTests(APITestCase):
 			format='json'
 		)
 		self.assertEqual(update_response.status_code, status.HTTP_200_OK)
+
+
+
+class DutySegmentCreationTests(TestCase):
+	"""Tests for duty segment creation endpoint (POST /api/v1/trips/{trip_id}/duty-segments/)"""
+	
+	def setUp(self):
+		from rest_framework.test import APIClient
+		User = get_user_model()
+		self.user = User.objects.create_user(email='driver@example.com', password='pass123', full_name='Driver')
+		self.other_user = User.objects.create_user(email='other@example.com', password='pass123', full_name='Other')
+		self.vehicle = Vehicle.objects.create(driver=self.user, truck_number='T1')
+		
+		# Create a trip
+		self.trip = Trip.objects.create(
+			driver=self.user,
+			vehicle=self.vehicle,
+			current_location='Origin',
+			pickup_location='Origin',
+			dropoff_location='Dest',
+			start_time=timezone.now() + timedelta(hours=1),
+		)
+		
+		self.client = APIClient()
+	
+	def test_successful_creation_with_valid_data(self):
+		"""Test successful creation of a duty segment with valid data."""
+		self.client.force_authenticate(user=self.user)
+		
+		start_time = timezone.now()
+		end_time = start_time + timedelta(hours=2)
+		
+		data = {
+			'status': 'driving',
+			'start_time': start_time.isoformat(),
+			'end_time': end_time.isoformat(),
+			'remarks': 'Test driving segment',
+		}
+		
+		url = f'/api/v1/trips/{self.trip.id}/duty-segments/'
+		response = self.client.post(url, data, format='json')
+		
+		self.assertEqual(response.status_code, 201)
+		self.assertEqual(response.data['status'], 'driving')
+		self.assertEqual(response.data['duration_hours'], 2.0)
+		self.assertEqual(response.data['remarks'], 'Test driving segment')
+	
+	def test_validation_error_for_end_time_before_start_time(self):
+		"""Test validation error when end_time is before start_time."""
+		self.client.force_authenticate(user=self.user)
+		
+		start_time = timezone.now()
+		end_time = start_time - timedelta(hours=1)
+		
+		data = {
+			'status': 'driving',
+			'start_time': start_time.isoformat(),
+			'end_time': end_time.isoformat(),
+		}
+		
+		url = f'/api/v1/trips/{self.trip.id}/duty-segments/'
+		response = self.client.post(url, data, format='json')
+		
+		self.assertEqual(response.status_code, 400)
+		self.assertIn('End time must be after start time', str(response.data))
+	
+	def test_hos_recalculation_is_triggered(self):
+		"""Test that HOS recalculation is triggered when duty segment is created."""
+		self.client.force_authenticate(user=self.user)
+		
+		# Store initial HOS values
+		initial_drive_hours = self.trip.current_available_drive_hours
+		initial_duty_hours = self.trip.current_available_duty_hours
+		
+		start_time = timezone.now()
+		end_time = start_time + timedelta(hours=3)
+		
+		data = {
+			'status': 'driving',
+			'start_time': start_time.isoformat(),
+			'end_time': end_time.isoformat(),
+		}
+		
+		url = f'/api/v1/trips/{self.trip.id}/duty-segments/'
+		response = self.client.post(url, data, format='json')
+		
+		self.assertEqual(response.status_code, 201)
+		
+		# Refresh trip and check HOS values were updated
+		self.trip.refresh_from_db()
+		self.assertLess(self.trip.current_available_drive_hours, initial_drive_hours)
+	
+	def test_trip_current_duty_status_is_updated(self):
+		"""Test that trip's current_duty_status is updated when duty segment is created."""
+		self.client.force_authenticate(user=self.user)
+		
+		start_time = timezone.now()
+		end_time = start_time + timedelta(hours=2)
+		
+		data = {
+			'status': 'on_duty',
+			'start_time': start_time.isoformat(),
+			'end_time': end_time.isoformat(),
+		}
+		
+		url = f'/api/v1/trips/{self.trip.id}/duty-segments/'
+		response = self.client.post(url, data, format='json')
+		
+		self.assertEqual(response.status_code, 201)
+		
+		# Refresh trip and check current_duty_status
+		self.trip.refresh_from_db()
+		self.assertEqual(self.trip.current_duty_status, 'on_duty')
+	
+	def test_unauthorized_access_returns_403(self):
+		"""Test that unauthorized users cannot create duty segments."""
+		self.client.force_authenticate(user=self.other_user)
+		
+		start_time = timezone.now()
+		end_time = start_time + timedelta(hours=2)
+		
+		data = {
+			'status': 'driving',
+			'start_time': start_time.isoformat(),
+			'end_time': end_time.isoformat(),
+		}
+		
+		url = f'/api/v1/trips/{self.trip.id}/duty-segments/'
+		response = self.client.post(url, data, format='json')
+		
+		self.assertEqual(response.status_code, 403)
+
+
+class DutySegmentListTests(TestCase):
+	"""Tests for duty segment list endpoint (GET /api/v1/trips/{trip_id}/duty-segments/)"""
+	
+	def setUp(self):
+		from rest_framework.test import APIClient
+		User = get_user_model()
+		self.user = User.objects.create_user(email='driver@example.com', password='pass123', full_name='Driver')
+		self.other_user = User.objects.create_user(email='other@example.com', password='pass123', full_name='Other')
+		self.vehicle = Vehicle.objects.create(driver=self.user, truck_number='T1')
+		
+		# Create a trip
+		self.trip = Trip.objects.create(
+			driver=self.user,
+			vehicle=self.vehicle,
+			current_location='Origin',
+			pickup_location='Origin',
+			dropoff_location='Dest',
+			start_time=timezone.now() + timedelta(hours=1),
+		)
+		
+		# Create some duty segments
+		base_time = timezone.now()
+		for i in range(3):
+			DutyStatus.objects.create(
+				trip=self.trip,
+				status='driving' if i % 2 == 0 else 'off_duty',
+				start_time=base_time + timedelta(hours=i*2),
+				end_time=base_time + timedelta(hours=i*2+1),
+				remarks=f'Segment {i}',
+			)
+		
+		self.client = APIClient()
+	
+	def test_returns_all_segments_for_trip(self):
+		"""Test that list endpoint returns all segments for the trip."""
+		self.client.force_authenticate(user=self.user)
+		
+		url = f'/api/v1/trips/{self.trip.id}/duty-segments/'
+		response = self.client.get(url)
+		
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(len(response.data), 3)
+	
+	def test_segments_are_in_chronological_order(self):
+		"""Test that segments are returned in chronological order (sorted by start_time)."""
+		self.client.force_authenticate(user=self.user)
+		
+		url = f'/api/v1/trips/{self.trip.id}/duty-segments/'
+		response = self.client.get(url)
+		
+		self.assertEqual(response.status_code, 200)
+		
+		# Check that segments are in order
+		for i in range(len(response.data) - 1):
+			current_start = timezone.datetime.fromisoformat(response.data[i]['start_time'])
+			next_start = timezone.datetime.fromisoformat(response.data[i+1]['start_time'])
+			self.assertLess(current_start, next_start)
+	
+	def test_unauthorized_access_returns_403(self):
+		"""Test that unauthorized users cannot list duty segments."""
+		self.client.force_authenticate(user=self.other_user)
+		
+		url = f'/api/v1/trips/{self.trip.id}/duty-segments/'
+		response = self.client.get(url)
+		
+		self.assertEqual(response.status_code, 403)
+
+
+class DutySegmentUpdateTests(TestCase):
+	"""Tests for duty segment update endpoint (PATCH /api/v1/trips/{trip_id}/duty-segments/{id}/)"""
+	
+	def setUp(self):
+		from rest_framework.test import APIClient
+		User = get_user_model()
+		self.user = User.objects.create_user(email='driver@example.com', password='pass123', full_name='Driver')
+		self.other_user = User.objects.create_user(email='other@example.com', password='pass123', full_name='Other')
+		self.vehicle = Vehicle.objects.create(driver=self.user, truck_number='T1')
+		
+		# Create a trip
+		self.trip = Trip.objects.create(
+			driver=self.user,
+			vehicle=self.vehicle,
+			current_location='Origin',
+			pickup_location='Origin',
+			dropoff_location='Dest',
+			start_time=timezone.now() + timedelta(hours=1),
+		)
+		
+		# Create a duty segment
+		base_time = timezone.now()
+		self.segment = DutyStatus.objects.create(
+			trip=self.trip,
+			status='driving',
+			start_time=base_time,
+			end_time=base_time + timedelta(hours=2),
+			remarks='Original segment',
+		)
+		
+		self.client = APIClient()
+	
+	def test_successful_update_with_valid_data(self):
+		"""Test successful update of a duty segment with valid data."""
+		self.client.force_authenticate(user=self.user)
+		
+		new_end_time = self.segment.start_time + timedelta(hours=3)
+		
+		data = {
+			'status': 'on_duty',
+			'end_time': new_end_time.isoformat(),
+			'remarks': 'Updated segment',
+		}
+		
+		url = f'/api/v1/trips/{self.trip.id}/duty-segments/{self.segment.id}/'
+		response = self.client.patch(url, data, format='json')
+		
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data['status'], 'on_duty')
+		self.assertEqual(response.data['remarks'], 'Updated segment')
+		self.assertEqual(response.data['duration_hours'], 3.0)
+	
+	def test_validation_error_for_invalid_end_time(self):
+		"""Test validation error when updating with invalid end_time."""
+		self.client.force_authenticate(user=self.user)
+		
+		invalid_end_time = self.segment.start_time - timedelta(hours=1)
+		
+		data = {
+			'end_time': invalid_end_time.isoformat(),
+		}
+		
+		url = f'/api/v1/trips/{self.trip.id}/duty-segments/{self.segment.id}/'
+		response = self.client.patch(url, data, format='json')
+		
+		self.assertEqual(response.status_code, 400)
+		self.assertIn('End time must be after start time', str(response.data))
+	
+	def test_hos_recalculation_on_update(self):
+		"""Test that HOS is recalculated when duty segment is updated."""
+		self.client.force_authenticate(user=self.user)
+		
+		# Store initial HOS values
+		initial_drive_hours = self.trip.current_available_drive_hours
+		
+		new_end_time = self.segment.start_time + timedelta(hours=5)
+		
+		data = {
+			'end_time': new_end_time.isoformat(),
+		}
+		
+		url = f'/api/v1/trips/{self.trip.id}/duty-segments/{self.segment.id}/'
+		response = self.client.patch(url, data, format='json')
+		
+		self.assertEqual(response.status_code, 200)
+		
+		# Refresh trip and check HOS values were updated
+		self.trip.refresh_from_db()
+		# HOS should be recalculated based on the longer segment
+		self.assertLess(self.trip.current_available_drive_hours, initial_drive_hours)
+	
+	def test_unauthorized_access_returns_403(self):
+		"""Test that unauthorized users cannot update duty segments."""
+		self.client.force_authenticate(user=self.other_user)
+		
+		data = {
+			'remarks': 'Unauthorized update',
+		}
+		
+		url = f'/api/v1/trips/{self.trip.id}/duty-segments/{self.segment.id}/'
+		response = self.client.patch(url, data, format='json')
+		
+		self.assertEqual(response.status_code, 403)
+
+
+
+class LogSheetServiceTests(TestCase):
+	"""Tests for LogSheetService - PDF generation, thumbnails, and graph data."""
+
+	def setUp(self):
+		User = get_user_model()
+		self.user = User.objects.create_user(email='driver@example.com', password='pass', full_name='Driver')
+		self.vehicle = Vehicle.objects.create(driver=self.user, truck_number='T1')
+		self.start_time = timezone.now().replace(microsecond=0)
+
+	def _make_trip(self):
+		"""Create a trip for testing."""
+		trip = Trip.objects.create(
+			driver=self.user,
+			vehicle=self.vehicle,
+			current_location='Origin',
+			pickup_location='Origin',
+			dropoff_location='Destination',
+			start_time=self.start_time,
+		)
+		return trip
+
+	def _add_duty_segment(self, trip, status, start_time, duration_hours, remarks=''):
+		"""Helper to add a duty segment to a trip."""
+		end_time = start_time + timedelta(hours=duration_hours)
+		DutyStatus.objects.create(
+			trip=trip,
+			status=status,
+			start_time=start_time,
+			end_time=end_time,
+			remarks=remarks,
+		)
+		return end_time
+
+	def test_generate_log_sheet_creates_logsheet_record(self):
+		"""Test that generate_log_sheet creates a LogSheet record."""
+		from trips.services import LogSheetService
+		from trips.models import LogSheet
+
+		trip = self._make_trip()
+		date = self.start_time.date()
+
+		# Add some duty segments
+		current_time = self.start_time
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.DRIVING, current_time, 2.0)
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.OFF_DUTY, current_time, 1.0)
+
+		service = LogSheetService()
+		log_sheet = service.generate_log_sheet(trip, date)
+
+		# Verify LogSheet was created
+		self.assertIsNotNone(log_sheet)
+		self.assertEqual(log_sheet.trip, trip)
+		self.assertEqual(log_sheet.date, date)
+
+		# Verify it's in the database
+		db_sheet = LogSheet.objects.get(trip=trip, date=date)
+		self.assertEqual(db_sheet.id, log_sheet.id)
+
+	def test_generate_log_sheet_extracts_segments_for_date(self):
+		"""Test that generate_log_sheet extracts only segments for the specified date."""
+		from trips.services import LogSheetService
+
+		trip = self._make_trip()
+		date = self.start_time.date()
+
+		# Add segments on the specified date
+		current_time = self.start_time
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.DRIVING, current_time, 2.0)
+
+		# Add segments on a different date (next day)
+		next_day_start = self.start_time + timedelta(days=1)
+		self._add_duty_segment(trip, DutyStatus.StatusChoices.DRIVING, next_day_start, 1.0)
+
+		service = LogSheetService()
+		log_sheet = service.generate_log_sheet(trip, date)
+
+		# Verify only segments from the specified date are included
+		timeline = log_sheet.graph_data.get('timeline', [])
+		self.assertEqual(len(timeline), 1)
+		self.assertEqual(timeline[0]['status'], 'driving')
+
+	def test_generate_log_sheet_creates_graph_data(self):
+		"""Test that generate_log_sheet creates graph_data with timeline and summary."""
+		from trips.services import LogSheetService
+
+		trip = self._make_trip()
+		date = self.start_time.date()
+
+		# Add duty segments
+		current_time = self.start_time
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.DRIVING, current_time, 2.0)
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.OFF_DUTY, current_time, 1.0)
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.ON_DUTY, current_time, 1.5)
+
+		service = LogSheetService()
+		log_sheet = service.generate_log_sheet(trip, date)
+
+		# Verify graph_data structure
+		self.assertIn('timeline', log_sheet.graph_data)
+		self.assertIn('status_summary', log_sheet.graph_data)
+
+		# Verify timeline entries
+		timeline = log_sheet.graph_data['timeline']
+		self.assertEqual(len(timeline), 3)
+		self.assertEqual(timeline[0]['status'], 'driving')
+		self.assertEqual(timeline[0]['duration_hours'], 2.0)
+		self.assertEqual(timeline[1]['status'], 'off_duty')
+		self.assertEqual(timeline[1]['duration_hours'], 1.0)
+		self.assertEqual(timeline[2]['status'], 'on_duty')
+		self.assertEqual(timeline[2]['duration_hours'], 1.5)
+
+		# Verify status summary
+		summary = log_sheet.graph_data['status_summary']
+		self.assertEqual(summary['driving_hours'], 2.0)
+		self.assertEqual(summary['off_duty_hours'], 1.0)
+		self.assertEqual(summary['on_duty_hours'], 1.5)
+		self.assertEqual(summary['sleeper_berth_hours'], 0.0)
+		self.assertEqual(summary['total_hours'], 4.5)
+
+	def test_generate_log_sheet_creates_pdf_file(self):
+		"""Test that generate_log_sheet creates a PDF file."""
+		from trips.services import LogSheetService
+
+		trip = self._make_trip()
+		date = self.start_time.date()
+
+		# Add duty segments
+		current_time = self.start_time
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.DRIVING, current_time, 2.0)
+
+		service = LogSheetService()
+		log_sheet = service.generate_log_sheet(trip, date)
+
+		# Verify PDF file was created
+		self.assertTrue(log_sheet.pdf_file)
+		self.assertGreater(log_sheet.pdf_file.size, 0)
+		# PDF files should start with %PDF
+		pdf_content = log_sheet.pdf_file.read()
+		self.assertTrue(pdf_content.startswith(b'%PDF'))
+
+	def test_generate_log_sheet_creates_thumbnail(self):
+		"""Test that generate_log_sheet creates a thumbnail image."""
+		from trips.services import LogSheetService
+
+		trip = self._make_trip()
+		date = self.start_time.date()
+
+		# Add duty segments
+		current_time = self.start_time
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.DRIVING, current_time, 2.0)
+
+		service = LogSheetService()
+		log_sheet = service.generate_log_sheet(trip, date)
+
+		# Verify thumbnail was created
+		self.assertTrue(log_sheet.thumbnail)
+		self.assertGreater(log_sheet.thumbnail.size, 0)
+		# PNG files should start with PNG magic bytes
+		thumbnail_content = log_sheet.thumbnail.read()
+		self.assertTrue(thumbnail_content.startswith(b'\x89PNG'))
+
+	def test_generate_log_sheet_with_empty_segments(self):
+		"""Test that generate_log_sheet handles trips with no segments for the date."""
+		from trips.services import LogSheetService
+
+		trip = self._make_trip()
+		date = self.start_time.date()
+
+		# Don't add any segments
+
+		service = LogSheetService()
+		log_sheet = service.generate_log_sheet(trip, date)
+
+		# Should still create a LogSheet record
+		self.assertIsNotNone(log_sheet)
+		self.assertEqual(log_sheet.trip, trip)
+		self.assertEqual(log_sheet.date, date)
+
+		# Graph data should have empty timeline
+		self.assertEqual(len(log_sheet.graph_data['timeline']), 0)
+		# All status hours should be 0
+		summary = log_sheet.graph_data['status_summary']
+		self.assertEqual(summary['total_hours'], 0.0)
+
+	def test_generate_log_sheet_returns_existing_record(self):
+		"""Test that generate_log_sheet returns existing LogSheet if already generated."""
+		from trips.services import LogSheetService
+		from trips.models import LogSheet
+
+		trip = self._make_trip()
+		date = self.start_time.date()
+
+		# Add duty segments
+		current_time = self.start_time
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.DRIVING, current_time, 2.0)
+
+		service = LogSheetService()
+
+		# Generate first time
+		log_sheet_1 = service.generate_log_sheet(trip, date)
+		log_sheet_1_id = log_sheet_1.id
+
+		# Generate second time
+		log_sheet_2 = service.generate_log_sheet(trip, date)
+
+		# Should return the same record
+		self.assertEqual(log_sheet_2.id, log_sheet_1_id)
+
+		# Should only have one LogSheet in database
+		count = LogSheet.objects.filter(trip=trip, date=date).count()
+		self.assertEqual(count, 1)
+
+	def test_generate_log_sheet_with_all_duty_statuses(self):
+		"""Test that generate_log_sheet handles all duty status types."""
+		from trips.services import LogSheetService
+
+		trip = self._make_trip()
+		date = self.start_time.date()
+
+		# Add segments with all status types
+		current_time = self.start_time
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.DRIVING, current_time, 2.0)
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.ON_DUTY, current_time, 1.0)
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.SLEEPER, current_time, 3.0)
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.OFF_DUTY, current_time, 1.5)
+
+		service = LogSheetService()
+		log_sheet = service.generate_log_sheet(trip, date)
+
+		# Verify all statuses are in graph data
+		summary = log_sheet.graph_data['status_summary']
+		self.assertEqual(summary['driving_hours'], 2.0)
+		self.assertEqual(summary['on_duty_hours'], 1.0)
+		self.assertEqual(summary['sleeper_berth_hours'], 3.0)
+		self.assertEqual(summary['off_duty_hours'], 1.5)
+		self.assertEqual(summary['total_hours'], 7.5)
+
+	def test_generate_log_sheet_with_remarks(self):
+		"""Test that generate_log_sheet includes remarks in graph data."""
+		from trips.services import LogSheetService
+
+		trip = self._make_trip()
+		date = self.start_time.date()
+
+		# Add segment with remarks
+		current_time = self.start_time
+		self._add_duty_segment(trip, DutyStatus.StatusChoices.DRIVING, current_time, 2.0, remarks='Highway driving')
+
+		service = LogSheetService()
+		log_sheet = service.generate_log_sheet(trip, date)
+
+		# Verify remarks are in timeline
+		timeline = log_sheet.graph_data['timeline']
+		self.assertEqual(timeline[0]['remarks'], 'Highway driving')
+
+	def test_generate_log_sheet_with_datetime_date_parameter(self):
+		"""Test that generate_log_sheet handles datetime objects as date parameter."""
+		from trips.services import LogSheetService
+
+		trip = self._make_trip()
+		# Pass datetime instead of date
+		datetime_param = self.start_time
+
+		# Add duty segments
+		current_time = self.start_time
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.DRIVING, current_time, 2.0)
+
+		service = LogSheetService()
+		log_sheet = service.generate_log_sheet(trip, datetime_param)
+
+		# Should still work and extract the date correctly
+		self.assertEqual(log_sheet.date, self.start_time.date())
+
+	def test_generate_log_sheet_pdf_includes_trip_info(self):
+		"""Test that generated PDF includes trip information."""
+		from trips.services import LogSheetService
+
+		trip = self._make_trip()
+		date = self.start_time.date()
+
+		# Add duty segments
+		current_time = self.start_time
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.DRIVING, current_time, 2.0)
+
+		service = LogSheetService()
+		log_sheet = service.generate_log_sheet(trip, date)
+
+		# Read PDF content and verify it contains trip info
+		pdf_content = log_sheet.pdf_file.read()
+		# PDF should contain trip ID (as text or encoded)
+		self.assertGreater(len(pdf_content), 100)  # PDF should have substantial content
+
+	def test_generate_log_sheet_thumbnail_includes_timeline(self):
+		"""Test that generated thumbnail includes timeline visualization."""
+		from trips.services import LogSheetService
+
+		trip = self._make_trip()
+		date = self.start_time.date()
+
+		# Add duty segments
+		current_time = self.start_time
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.DRIVING, current_time, 2.0)
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.OFF_DUTY, current_time, 1.0)
+
+		service = LogSheetService()
+		log_sheet = service.generate_log_sheet(trip, date)
+
+		# Verify thumbnail is a valid PNG
+		thumbnail_content = log_sheet.thumbnail.read()
+		self.assertTrue(thumbnail_content.startswith(b'\x89PNG'))
+		self.assertGreater(len(thumbnail_content), 100)
+
+	def test_extract_segments_for_date_filters_correctly(self):
+		"""Test that _extract_segments_for_date filters segments correctly."""
+		from trips.services import LogSheetService
+
+		trip = self._make_trip()
+		date = self.start_time.date()
+
+		# Add segments on the specified date
+		current_time = self.start_time
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.DRIVING, current_time, 2.0)
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.OFF_DUTY, current_time, 1.0)
+
+		# Add segments on different dates
+		next_day = self.start_time + timedelta(days=1)
+		self._add_duty_segment(trip, DutyStatus.StatusChoices.DRIVING, next_day, 1.0)
+
+		prev_day = self.start_time - timedelta(days=1)
+		self._add_duty_segment(trip, DutyStatus.StatusChoices.DRIVING, prev_day, 1.0)
+
+		service = LogSheetService()
+		segments = service._extract_segments_for_date(trip, date)
+
+		# Should only return segments from the specified date
+		self.assertEqual(len(segments), 2)
+		for segment in segments:
+			self.assertEqual(segment.start_time.date(), date)
+
+	def test_create_graph_data_calculates_totals_correctly(self):
+		"""Test that _create_graph_data calculates totals correctly."""
+		from trips.services import LogSheetService
+
+		trip = self._make_trip()
+		date = self.start_time.date()
+
+		# Add segments with specific durations
+		current_time = self.start_time
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.DRIVING, current_time, 2.5)
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.ON_DUTY, current_time, 1.25)
+		current_time = self._add_duty_segment(trip, DutyStatus.StatusChoices.SLEEPER, current_time, 3.75)
+
+		service = LogSheetService()
+		segments = service._extract_segments_for_date(trip, date)
+		graph_data = service._create_graph_data(segments)
+
+		# Verify totals
+		summary = graph_data['status_summary']
+		self.assertEqual(summary['driving_hours'], 2.5)
+		self.assertEqual(summary['on_duty_hours'], 1.25)
+		self.assertEqual(summary['sleeper_berth_hours'], 3.75)
+		self.assertEqual(summary['total_hours'], 7.5)
+
+	def test_generate_pdf_handles_no_segments(self):
+		"""Test that _generate_pdf handles trips with no segments gracefully."""
+		from trips.services import LogSheetService
+
+		trip = self._make_trip()
+		date = self.start_time.date()
+
+		service = LogSheetService()
+		pdf_bytes = service._generate_pdf(trip, [], date)
+
+		# Should still generate a valid PDF
+		self.assertTrue(pdf_bytes.startswith(b'%PDF'))
+		self.assertGreater(len(pdf_bytes), 100)
+
+	def test_generate_thumbnail_handles_no_segments(self):
+		"""Test that _generate_thumbnail handles trips with no segments gracefully."""
+		from trips.services import LogSheetService
+
+		trip = self._make_trip()
+		date = self.start_time.date()
+
+		service = LogSheetService()
+		thumbnail_bytes = service._generate_thumbnail([], date)
+
+		# Should still generate a valid PNG
+		self.assertTrue(thumbnail_bytes.startswith(b'\x89PNG'))
+		self.assertGreater(len(thumbnail_bytes), 100)

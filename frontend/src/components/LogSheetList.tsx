@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiClient } from '../lib/api'
+import { ResponsiveImage } from './ResponsiveImage'
 
 type LogSheet = {
   id: number
@@ -66,7 +67,13 @@ export const LogSheetList = ({ tripId }: { tripId: number }) => {
           </div>
           <div className="flex items-center gap-2">
             {s.thumbnail ? (
-              <img src={s.thumbnail} alt={`thumb-${s.id}`} className="h-12 w-24 object-cover rounded" />
+              <ResponsiveImage
+                src={s.thumbnail}
+                alt={`Log sheet thumbnail for ${s.date}`}
+                className="h-12 w-24 rounded"
+                objectFit="cover"
+                lazy
+              />
             ) : s.pdf_file ? (
               <a href={s.pdf_file} className="text-sm text-blue-600" target="_blank" rel="noreferrer">Download PDF</a>
             ) : (

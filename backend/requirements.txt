@@ -26,3 +26,5 @@ urllib3==2.7.0
 reportlab==4.0.0
 matplotlib
 Pillow
+drf-nested-routers==0.93.4
+django-filter==24.1

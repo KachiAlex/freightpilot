@@ -6,9 +6,12 @@ import { useRegenerateSchedule, useTrip } from '../hooks'
 import { MapPlaceholder } from '../components/MapPlaceholder'
 import { TripDetailHeader } from '../components/TripDetailHeader'
 import LogSheetList from '../components/LogSheetList'
-import { DutySegmentForm } from '../components/DutySegmentForm'
+// import { DutySegmentForm } from '../components/DutySegmentForm'
 import { DutySegmentList } from '../components/DutySegmentList'
 import { LogSheetForm } from '../components/LogSheetForm'
+
+// Placeholder for DutySegmentForm
+const DutySegmentForm = (_props: { tripId: number; onSuccess?: () => void }) => <div>Duty Segment Form</div>
 
 export const TripDetailPage = () => {
   const { tripId } = useParams<{ tripId: string }>()

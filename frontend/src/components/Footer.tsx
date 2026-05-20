@@ -87,24 +87,24 @@ export const Footer: React.FC<FooterProps> = ({
 }) => {
   return (
     <footer
-      className="bg-neutral-800 text-neutral-white border-t border-neutral-700"
+      className="bg-[#02040d] text-slate-300 border-t border-white/10"
       data-testid={testId}
     >
       <Container>
         {/* Main Footer Content */}
-        <div className="py-2xl mobile:py-2xl tablet:py-3xl desktop:py-4xl">
-          <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 gap-sm mobile:gap-sm tablet:gap-md desktop:gap-2xl">
+        <div className="py-16 md:py-20">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-12">
             {sections.map((section, index) => (
               <nav key={index} aria-label={`${section.title} navigation`}>
-                <h3 className="text-h3 font-semibold text-neutral-white mb-md mobile:mb-md tablet:mb-lg desktop:mb-lg">
+                <h3 className="text-lg md:text-xl font-semibold text-white mb-4 md:mb-6">
                   {section.title}
                 </h3>
-                <ul className="space-y-sm mobile:space-y-sm tablet:space-y-md desktop:space-y-md">
+                <ul className="space-y-3 md:space-y-4">
                   {section.links.map((link) => (
                     <li key={link.label}>
                       <a
                         href={link.href}
-                        className="text-body_sm text-neutral-medium hover:text-neutral-white transition-colors duration-200 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-blue rounded-sm"
+                        className="text-sm md:text-base text-slate-400 hover:text-white transition-colors duration-200 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky rounded-lg"
                       >
                         {link.label}
                       </a>
@@ -117,21 +117,21 @@ export const Footer: React.FC<FooterProps> = ({
         </div>
 
         {/* Footer Bottom */}
-        <div className="pt-sm mobile:pt-sm tablet:pt-md desktop:pt-2xl border-t border-neutral-700 flex flex-col mobile:flex-col tablet:flex-row desktop:flex-row justify-between items-center gap-sm mobile:gap-sm tablet:gap-md desktop:gap-md">
+        <div className="pt-8 md:pt-12 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4 md:gap-8">
           {/* Copyright */}
-          <p className="text-body_sm text-neutral-medium">
+          <p className="text-sm md:text-base text-slate-400">
             {copyrightText}
           </p>
 
           {/* Social Links */}
           <nav aria-label="Social media links">
-            <ul className="flex gap-sm mobile:gap-sm tablet:gap-md desktop:gap-md">
+            <ul className="flex gap-4 md:gap-6">
               {socialLinks.map((link) => (
                 <li key={link.name}>
                   <a
                     href={link.href}
                     aria-label={link.name}
-                    className="w-5 h-5 text-neutral-medium hover:text-neutral-white transition-colors duration-200 flex items-center justify-center focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-blue rounded-sm"
+                    className="w-8 h-8 md:w-10 md:h-10 text-slate-400 hover:text-white transition-colors duration-200 flex items-center justify-center focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky rounded-lg"
                     target="_blank"
                     rel="noopener noreferrer"
                   >

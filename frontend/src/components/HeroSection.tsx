@@ -68,39 +68,38 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
   return (
     <section
-      className="pt-3xl pb-2xl mobile:pt-3xl mobile:pb-2xl tablet:pt-3xl tablet:pb-3xl desktop:pt-4xl desktop:pb-4xl animate-fade-in"
+      className="py-16 md:py-24 animate-fade-in"
       data-testid={testId}
       aria-label="Hero section"
     >
       <Container>
-        <div className="grid grid-cols-1 tablet:grid-cols-1 desktop:grid-cols-2 gap-2xl mobile:gap-2xl tablet:gap-2xl desktop:gap-3xl items-center">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 items-center">
           {/* Content Column */}
           <article className="flex flex-col">
             {/* Headline */}
             <h1
-              className="text-h1 text-neutral-dark mb-lg mobile:mb-lg tablet:mb-lg desktop:mb-lg"
-              style={{ maxWidth: '600px' }}
+              className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6"
+              style={{ maxWidth: '600px', lineHeight: '1.1' }}
             >
               {headline}
             </h1>
 
             {/* Subheading */}
             <p
-              className="text-body_lg text-neutral-medium mb-2xl mobile:mb-2xl tablet:mb-2xl desktop:mb-2xl"
+              className="text-lg md:text-xl text-slate-300 mb-8"
               style={{ maxWidth: '550px', lineHeight: '1.6' }}
             >
               {subheading}
             </p>
 
             {/* CTA Buttons */}
-            <div className="flex flex-col mobile:flex-col tablet:flex-row desktop:flex-row gap-sm mobile:gap-sm tablet:gap-md desktop:gap-md">
+            <div className="flex flex-col sm:flex-row gap-4">
               <Button
                 variant="primary"
                 size="regular"
                 onClick={onPrimaryCTA}
                 aria-label={primaryCTAText}
                 onKeyDown={(e) => {
-                  // Allow Enter and Space to activate button
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     onPrimaryCTA();
@@ -115,7 +114,6 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 onClick={onSecondaryCTA}
                 aria-label={secondaryCTAText}
                 onKeyDown={(e) => {
-                  // Allow Enter and Space to activate button
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     onSecondaryCTA();
@@ -129,10 +127,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
           {/* Visual Column */}
           <div
-            className="hidden desktop:flex items-center justify-center rounded-lg overflow-hidden"
-            style={{
-              background: 'linear-gradient(135deg, #E6F0FF 0%, #E0FFFF 100%)',
-            }}
+            className="hidden md:flex items-center justify-center rounded-2xl overflow-hidden border border-white/10 bg-white/5 backdrop-blur-lg"
           >
             <ResponsiveImageContainer aspectRatio="square">
               <ResponsiveImage

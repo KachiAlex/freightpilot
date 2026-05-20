@@ -67,43 +67,43 @@ export const FeatureHighlights: React.FC<FeatureHighlightsProps> = ({
 }) => {
   return (
     <section
-      className="py-2xl mobile:py-2xl tablet:py-3xl desktop:py-4xl bg-neutral-light"
+      className="py-16 md:py-24"
       data-testid={testId}
       aria-label="Feature highlights"
     >
       <Container>
         {/* Section Heading */}
-        <div className="mb-2xl mobile:mb-2xl tablet:mb-3xl desktop:mb-3xl text-center">
-          <h2 className="text-h2 text-neutral-dark">
+        <div className="mb-12 md:mb-16 text-center">
+          <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-4">
             {heading}
           </h2>
         </div>
 
         {/* Features Grid */}
-        <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 gap-sm mobile:gap-sm tablet:gap-md desktop:gap-lg">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
           {features.map((feature, index) => (
             <article
               key={feature.id}
-              className="flex flex-col h-full animate-scale-in focus-within:outline-none focus-within:ring-2 focus-within:ring-primary-blue focus-within:ring-offset-2 rounded-lg"
+              className="flex flex-col h-full animate-scale-in focus-within:outline-none focus-within:ring-2 focus-within:ring-sky focus-within:ring-offset-2 rounded-2xl"
               style={{ animationDelay: `${index * 0.1}s` }}
               data-testid={`feature-card-${feature.id}`}
               tabIndex={0}
               role="region"
               aria-label={`Feature: ${feature.title}`}
             >
-              <Card className="flex flex-col h-full">
+              <Card className="flex flex-col h-full border border-white/10 bg-white/5 backdrop-blur-lg hover:bg-white/10 transition-all duration-300 hover:-translate-y-1">
                 {/* Icon */}
-                <div className="text-4xl mobile:text-4xl tablet:text-5xl desktop:text-5xl mb-md mobile:mb-md tablet:mb-lg desktop:mb-lg text-primary-blue" aria-hidden="true">
+                <div className="text-4xl md:text-5xl mb-4 md:mb-6 text-sky" aria-hidden="true">
                   {feature.icon}
                 </div>
 
                 {/* Title */}
-                <h3 className="text-h3 text-neutral-dark font-semibold mb-md mobile:mb-md tablet:mb-lg desktop:mb-lg">
+                <h3 className="text-xl md:text-2xl font-semibold text-white mb-3 md:mb-4">
                   {feature.title}
                 </h3>
 
                 {/* Description */}
-                <p className="text-body text-neutral-medium flex-grow" style={{ lineHeight: '1.6' }}>
+                <p className="text-base md:text-lg text-slate-300 flex-grow" style={{ lineHeight: '1.6' }}>
                   {feature.description}
                 </p>
               </Card>

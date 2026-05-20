@@ -94,16 +94,16 @@ export const Navigation: React.FC<NavigationProps> = ({ testId }) => {
 
   return (
     <div
-      className="fixed top-0 left-0 right-0 z-1000 bg-neutral-white border-b border-neutral-border"
+      className="fixed top-0 left-0 right-0 z-50 bg-[#02040d]/80 backdrop-blur-lg border-b border-white/10"
       data-testid={testId}
     >
       {/* Desktop Navigation */}
-      <nav className="hidden desktop:flex h-72 items-center justify-between px-lg" aria-label="Main navigation">
+      <nav className="hidden md:flex h-20 items-center justify-between px-4 md:px-8" aria-label="Main navigation">
         {/* Logo */}
         <div className="flex items-center">
           <a
             href="/"
-            className="text-h3 font-bold text-neutral-dark hover:text-primary-blue transition-colors duration-200 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-blue rounded-sm"
+            className="text-2xl font-bold text-white hover:text-sky transition-colors duration-200 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky rounded-lg"
             aria-label="Freightpilot Home"
           >
             Freightpilot
@@ -111,12 +111,12 @@ export const Navigation: React.FC<NavigationProps> = ({ testId }) => {
         </div>
 
         {/* Desktop Navigation Links */}
-        <div className="flex items-center gap-lg" role="menubar">
+        <div className="flex items-center gap-6" role="menubar">
           {navLinks.map((link, index) => (
             <a
               key={link.label}
               href={link.href}
-              className="text-body font-medium text-neutral-dark hover:text-primary-blue transition-colors duration-200 pb-1 hover:border-b-2 hover:border-primary-blue focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-blue rounded-sm"
+              className="text-base font-medium text-slate-300 hover:text-white transition-colors duration-200 pb-1 hover:border-b-2 hover:border-sky focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky rounded-lg"
               role="menuitem"
               tabIndex={index === 0 ? 0 : -1}
               onKeyDown={(e) => {
@@ -154,7 +154,7 @@ export const Navigation: React.FC<NavigationProps> = ({ testId }) => {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-md">
+        <div className="flex items-center gap-4">
           <Button
             variant="secondary"
             size="regular"
@@ -175,11 +175,11 @@ export const Navigation: React.FC<NavigationProps> = ({ testId }) => {
       </nav>
 
       {/* Mobile Navigation */}
-      <nav className="desktop:hidden h-64 flex items-center justify-between px-sm" aria-label="Main navigation">
+      <nav className="md:hidden h-16 flex items-center justify-between px-4" aria-label="Main navigation">
         {/* Logo */}
         <a
           href="/"
-          className="text-h3 font-bold text-neutral-dark focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-blue rounded-sm"
+          className="text-xl font-bold text-white focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky rounded-lg"
           aria-label="Freightpilot Home"
         >
           Freightpilot
@@ -189,24 +189,24 @@ export const Navigation: React.FC<NavigationProps> = ({ testId }) => {
         <button
           ref={hamburgerRef}
           onClick={() => setIsMenuOpen(!isMenuOpen)}
-          className="w-11 h-11 flex items-center justify-center rounded-md hover:bg-neutral-light transition-colors duration-200 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-blue"
+          className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors duration-200 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
           aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
           aria-expanded={isMenuOpen}
           aria-controls="mobile-menu"
         >
           <div className="w-6 h-6 flex flex-col justify-center items-center gap-1">
             <span
-              className={`w-6 h-0.5 bg-neutral-dark transition-all duration-300 ${
+              className={`w-6 h-0.5 bg-white transition-all duration-300 ${
                 isMenuOpen ? 'rotate-45 translate-y-2' : ''
               }`}
             />
             <span
-              className={`w-6 h-0.5 bg-neutral-dark transition-all duration-300 ${
+              className={`w-6 h-0.5 bg-white transition-all duration-300 ${
                 isMenuOpen ? 'opacity-0' : ''
               }`}
             />
             <span
-              className={`w-6 h-0.5 bg-neutral-dark transition-all duration-300 ${
+              className={`w-6 h-0.5 bg-white transition-all duration-300 ${
                 isMenuOpen ? '-rotate-45 -translate-y-2' : ''
               }`}
             />
@@ -217,7 +217,7 @@ export const Navigation: React.FC<NavigationProps> = ({ testId }) => {
       {/* Mobile Menu Overlay */}
       {isMenuOpen && (
         <nav
-          className="fixed inset-0 top-64 bg-neutral-white z-999 desktop:hidden"
+          className="fixed inset-0 top-16 bg-[#02040d]/95 backdrop-blur-lg z-40 md:hidden"
           id="mobile-menu"
           ref={(el) => {
             menuRef.current = el;
@@ -227,12 +227,12 @@ export const Navigation: React.FC<NavigationProps> = ({ testId }) => {
         >
           <div className="flex flex-col h-full">
             {/* Mobile Navigation Links */}
-            <div className="flex-1 flex flex-col p-sm gap-sm">
+            <div className="flex-1 flex flex-col p-4 gap-2">
               {navLinks.map((link, index) => (
                 <a
                   key={link.label}
                   href={link.href}
-                  className="text-body font-medium text-neutral-dark hover:text-primary-blue transition-colors duration-200 py-md px-md rounded-md hover:bg-neutral-light focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-blue"
+                  className="text-base font-medium text-slate-300 hover:text-white transition-colors duration-200 py-3 px-4 rounded-lg hover:bg-white/10 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
                   onClick={() => setIsMenuOpen(false)}
                   tabIndex={isMenuOpen ? 0 : -1}
                   onKeyDown={(e) => {
@@ -270,7 +270,7 @@ export const Navigation: React.FC<NavigationProps> = ({ testId }) => {
             </div>
 
             {/* Mobile Action Buttons */}
-            <div className="flex flex-col gap-sm p-sm border-t border-neutral-border">
+            <div className="flex flex-col gap-3 p-4 border-t border-white/10">
               <Button
                 variant="secondary"
                 size="regular"

@@ -62,7 +62,7 @@ export const MetricsSection: React.FC<MetricsSectionProps> = ({
 }) => {
   return (
     <section
-      className="py-2xl mobile:py-2xl tablet:py-3xl desktop:py-4xl"
+      className="py-16 md:py-24"
       style={{
         background: 'linear-gradient(135deg, #0066FF 0%, #00D9FF 100%)',
       }}
@@ -72,11 +72,11 @@ export const MetricsSection: React.FC<MetricsSectionProps> = ({
     >
       <Container>
         {/* Metrics Grid */}
-        <div className="grid grid-cols-1 tablet:grid-cols-2 desktop:grid-cols-3 gap-sm mobile:gap-sm tablet:gap-md desktop:gap-2xl">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
           {metrics.map((metric, index) => (
             <article
               key={metric.id}
-              className="p-md mobile:p-md tablet:p-lg desktop:p-xl rounded-md animate-scale-in focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-white"
+              className="p-6 md:p-8 rounded-2xl animate-scale-in focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               style={{
                 background: 'rgba(255, 255, 255, 0.1)',
                 border: '1px solid rgba(255, 255, 255, 0.2)',
@@ -89,13 +89,13 @@ export const MetricsSection: React.FC<MetricsSectionProps> = ({
               aria-label={`${metric.label}: ${metric.number} ${metric.context}`}
             >
               {/* Number */}
-              <div className="text-5xl font-bold text-neutral-white mb-md mobile:mb-md tablet:mb-lg desktop:mb-lg">
+              <div className="text-5xl md:text-6xl font-bold text-white mb-4 md:mb-6">
                 {metric.number}
               </div>
 
               {/* Label */}
               <div
-                className="text-body font-normal mb-sm mobile:mb-sm tablet:mb-md desktop:mb-md"
+                className="text-lg md:text-xl font-normal mb-2 md:mb-3"
                 style={{ color: 'rgba(255, 255, 255, 0.9)' }}
               >
                 {metric.label}
@@ -103,7 +103,7 @@ export const MetricsSection: React.FC<MetricsSectionProps> = ({
 
               {/* Context */}
               <div
-                className="text-body_sm font-normal"
+                className="text-base md:text-lg font-normal"
                 style={{ color: 'rgba(255, 255, 255, 0.7)' }}
               >
                 {metric.context}

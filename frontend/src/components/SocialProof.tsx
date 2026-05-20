@@ -76,24 +76,24 @@ export const SocialProof: React.FC<SocialProofProps> = ({
 }) => {
   return (
     <section
-      className="py-2xl mobile:py-2xl tablet:py-2xl desktop:py-3xl px-sm mobile:px-sm tablet:px-md desktop:px-lg bg-neutral-white border-t border-neutral-border"
+      className="py-12 md:py-16 px-4 md:px-8 border-t border-white/10"
       data-testid={testId}
       aria-label="Trusted companies"
     >
       <Container>
         {/* Heading */}
-        <div className="mb-2xl mobile:mb-2xl tablet:mb-2xl desktop:mb-2xl text-center">
-          <h2 className="text-h2 text-neutral-dark">
+        <div className="mb-8 md:mb-12 text-center">
+          <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-white">
             {heading}
           </h2>
         </div>
 
         {/* Logo Grid */}
-        <div className="grid grid-cols-2 tablet:grid-cols-3 desktop:grid-cols-6 gap-sm mobile:gap-sm tablet:gap-md desktop:gap-lg items-center justify-items-center">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 md:gap-6 items-center justify-items-center">
           {companies.map((company, index) => (
             <article
               key={company.id}
-              className="transition-opacity duration-200 hover:opacity-100 w-full flex justify-center animate-fade-in focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-blue rounded-sm"
+              className="transition-opacity duration-200 hover:opacity-100 w-full flex justify-center animate-fade-in focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky rounded-lg"
               style={{ opacity: 0.6, animationDelay: `${index * 0.05}s` }}
               data-testid={`company-logo-${company.id}`}
               tabIndex={0}

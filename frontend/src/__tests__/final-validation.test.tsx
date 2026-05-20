@@ -108,7 +108,7 @@ describe('Final Validation Tests', () => {
 
   describe('Edge Cases', () => {
     it('should handle empty content gracefully', () => {
-      expect(() => render(<Card />)).not.toThrow();
+      expect(() => render(<Card><div></div></Card>)).not.toThrow();
     });
 
     it('should handle long text gracefully', () => {
